@@ -62,34 +62,67 @@ app.get('/', requireAuth, (req, res) => {
 app.use('/styles.css', requireAuth, express.static('public/styles.css'));
 app.use('/app.js', requireAuth, express.static('public/app.js'));
 
-app.get('/api/datasets', requireAuth, (req, res) => {
-  const analysisPath = path.join(__dirname, 'analysis');
+app.get('/api/datasets/:project', requireAuth, (req, res) => {
+  const { project } = req.params;
   
   try {
     const datasets = [];
     
-    if (fs.existsSync(analysisPath)) {
-      const folders = fs.readdirSync(analysisPath)
-        .filter(file => fs.statSync(path.join(analysisPath, file)).isDirectory())
-        .sort((a, b) => parseInt(a) - parseInt(b));
+    if (project === 'analysis') {
+      const analysisPath = path.join(__dirname, 'analysis');
       
-      folders.forEach(folder => {
-        const folderPath = path.join(analysisPath, folder);
-        const files = fs.readdirSync(folderPath);
+      if (fs.existsSync(analysisPath)) {
+        const folders = fs.readdirSync(analysisPath)
+          .filter(file => fs.statSync(path.join(analysisPath, file)).isDirectory())
+          .sort((a, b) => parseInt(a) - parseInt(b));
         
-        const imageFiles = files.filter(f => f.toLowerCase().endsWith('.jpg') || f.toLowerCase().endsWith('.png'));
-        const ssiFile = files.find(f => f.startsWith('SSI_coeff_'));
-        
-        if (imageFiles.length >= 2) {
-          const sortedImages = imageFiles.filter(f => !f.startsWith('SSI_')).sort();
-          datasets.push({
-            id: folder,
-            preEvent: `/api/image/analysis/${folder}/${sortedImages[0]}`,
-            postEvent: `/api/image/analysis/${folder}/${sortedImages[1]}`,
-            changeDetection: ssiFile ? `/api/image/analysis/${folder}/${ssiFile}` : null
+        folders.forEach(folder => {
+          const folderPath = path.join(analysisPath, folder);
+          const files = fs.readdirSync(folderPath);
+          
+          const imageFiles = files.filter(f => f.toLowerCase().endsWith('.jpg') || f.toLowerCase().endsWith('.png'));
+          const ssiFile = files.find(f => f.startsWith('SSI_coeff_'));
+          
+          if (imageFiles.length >= 2) {
+            const sortedImages = imageFiles.filter(f => !f.startsWith('SSI_')).sort();
+            datasets.push({
+              id: folder,
+              preEvent: `/api/image/analysis/${folder}/${sortedImages[0]}`,
+              postEvent: `/api/image/analysis/${folder}/${sortedImages[1]}`,
+              changeDetection: ssiFile ? `/api/image/analysis/${folder}/${ssiFile}` : null
+            });
+          }
+        });
+      }
+    } else if (project === 'coregistered') {
+      const coregisteredPath = path.join(__dirname, 'co-registered');
+      
+      if (fs.existsSync(coregisteredPath)) {
+        const folders = fs.readdirSync(coregisteredPath)
+          .filter(file => fs.statSync(path.join(coregisteredPath, file)).isDirectory())
+          .sort((a, b) => {
+            const aNum = parseInt(a);
+            const bNum = parseInt(b);
+            if (isNaN(aNum) || isNaN(bNum)) return a.localeCompare(b);
+            return aNum - bNum;
           });
-        }
-      });
+        
+        folders.forEach(folder => {
+          const folderPath = path.join(coregisteredPath, folder);
+          const files = fs.readdirSync(folderPath)
+            .filter(f => f.toLowerCase().endsWith('.jpg') || f.toLowerCase().endsWith('.png'));
+          
+          if (files.length >= 2) {
+            const sortedImages = files.sort();
+            datasets.push({
+              id: folder,
+              preEvent: `/api/image/co-registered/${folder}/${sortedImages[0]}`,
+              postEvent: `/api/image/co-registered/${folder}/${sortedImages[1]}`,
+              changeDetection: null
+            });
+          }
+        });
+      }
     }
     
     res.json(datasets);
@@ -102,6 +135,23 @@ app.get('/api/datasets', requireAuth, (req, res) => {
 app.get('/api/image/:folder/:subfolder/:filename', requireAuth, (req, res) => {
   const { folder, subfolder, filename } = req.params;
   const imagePath = path.join(folder, subfolder, filename);
+  const fullPath = path.join(__dirname, imagePath);
+  
+  if (!fullPath.startsWith(__dirname)) {
+    return res.status(403).send('Access denied');
+  }
+  
+  if (fs.existsSync(fullPath)) {
+    res.sendFile(fullPath);
+  } else {
+    res.status(404).send('Image not found');
+  }
+});
+
+// Route for co-registered images in results folder
+app.get('/api/image/:folder/:subfolder/:subsubfolder/:filename', requireAuth, (req, res) => {
+  const { folder, subfolder, subsubfolder, filename } = req.params;
+  const imagePath = path.join(folder, subfolder, subsubfolder, filename);
   const fullPath = path.join(__dirname, imagePath);
   
   if (!fullPath.startsWith(__dirname)) {

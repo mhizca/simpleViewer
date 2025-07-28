@@ -3,6 +3,7 @@ class ImageViewer {
         this.datasets = [];
         this.currentDatasetIndex = 0;
         this.currentImageType = 'pre';
+        this.currentProject = 'analysis';
         this.scale = 1;
         this.minScale = 0.1;
         this.maxScale = 5;
@@ -24,9 +25,11 @@ class ImageViewer {
     setupElements() {
         this.viewer = document.getElementById('imageViewer');
         this.image = document.getElementById('mainImage');
+        this.projectSelect = document.getElementById('projectSelect');
         this.datasetSelect = document.getElementById('datasetSelect');
         this.datasetCounter = document.getElementById('datasetCounter');
         this.statusText = document.getElementById('statusText');
+        this.imageNameText = document.getElementById('imageName');
         this.zoomLevelText = document.getElementById('zoomLevel');
     }
     
@@ -37,6 +40,13 @@ class ImageViewer {
         document.getElementById('zoomIn').addEventListener('click', () => this.zoom(1.2));
         document.getElementById('zoomOut').addEventListener('click', () => this.zoom(0.8));
         document.getElementById('resetZoom').addEventListener('click', () => this.resetView());
+        
+        this.projectSelect.addEventListener('change', (e) => {
+            this.currentProject = e.target.value;
+            this.currentDatasetIndex = 0;
+            this.loadDatasets();
+            this.updateChangeDetectionButton();
+        });
         
         document.querySelectorAll('.image-type-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
@@ -95,11 +105,12 @@ class ImageViewer {
     async loadDatasets() {
         try {
             this.statusText.textContent = 'Loading datasets...';
-            const response = await fetch('/api/datasets');
+            const response = await fetch(`/api/datasets/${this.currentProject}`);
             this.datasets = await response.json();
             
             if (this.datasets.length === 0) {
                 this.statusText.textContent = 'No datasets found';
+                this.datasetSelect.innerHTML = '<option>No datasets available</option>';
                 return;
             }
             
@@ -108,6 +119,7 @@ class ImageViewer {
             ).join('');
             
             this.updateDatasetCounter();
+            this.updateChangeDetectionButton();
             this.loadCurrentImage();
         } catch (error) {
             console.error('Error loading datasets:', error);
@@ -140,6 +152,11 @@ class ImageViewer {
         }
         
         this.statusText.textContent = 'Loading image...';
+        
+        // Extract filename from URL
+        const filename = imageUrl.split('/').pop();
+        this.imageNameText.textContent = filename;
+        
         this.image.onload = () => {
             this.statusText.textContent = `Loaded: ${this.currentImageType}-event image`;
             // Only fit to view if this is the first image load (scale is 1 and no translation)
@@ -152,6 +169,7 @@ class ImageViewer {
         };
         this.image.onerror = () => {
             this.statusText.textContent = 'Error loading image';
+            this.imageNameText.textContent = '';
         };
         this.image.src = imageUrl;
     }
@@ -188,6 +206,20 @@ class ImageViewer {
     
     updateDatasetCounter() {
         this.datasetCounter.textContent = `${this.currentDatasetIndex + 1} / ${this.datasets.length}`;
+    }
+    
+    updateChangeDetectionButton() {
+        const changeBtn = document.querySelector('[data-type="change"]');
+        if (this.currentProject === 'coregistered') {
+            changeBtn.style.display = 'none';
+            if (this.currentImageType === 'change') {
+                this.currentImageType = 'pre';
+                document.querySelector('[data-type="pre"]').classList.add('active');
+                changeBtn.classList.remove('active');
+            }
+        } else {
+            changeBtn.style.display = 'block';
+        }
     }
     
     zoom(factor) {

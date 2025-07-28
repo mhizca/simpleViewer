@@ -9,6 +9,13 @@
 <body>
     <div class="container">
         <div class="controls">
+            <div class="project-selector">
+                <label for="projectSelect">Project:</label>
+                <select id="projectSelect">
+                    <option value="analysis">Analysis (with SSI maps)</option>
+                    <option value="coregistered">Co-registered only</option>
+                </select>
+            </div>
             <div class="dataset-selector">
                 <label for="datasetSelect">Dataset:</label>
                 <select id="datasetSelect"></select>
@@ -39,6 +46,7 @@
         
         <div class="status-bar">
             <span id="statusText">Ready</span>
+            <span id="imageName"></span>
             <span id="zoomLevel">100%</span>
         </div>
     </div>
