@@ -49,6 +49,8 @@ class ImageViewer {
         
         this.datasetSelect.addEventListener('change', (e) => {
             this.currentDatasetIndex = parseInt(e.target.value);
+            // Reset view when changing datasets via dropdown
+            this.resetView();
             this.loadCurrentImage();
         });
         
@@ -60,7 +62,10 @@ class ImageViewer {
         this.viewer.addEventListener('wheel', (e) => {
             e.preventDefault();
             const delta = e.deltaY > 0 ? 0.9 : 1.1;
-            this.zoom(delta);
+            const rect = this.viewer.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            this.zoomAtPoint(delta, x, y);
         });
         
         document.addEventListener('keydown', (e) => {
@@ -137,7 +142,13 @@ class ImageViewer {
         this.statusText.textContent = 'Loading image...';
         this.image.onload = () => {
             this.statusText.textContent = `Loaded: ${this.currentImageType}-event image`;
-            this.fitToView();
+            // Only fit to view if this is the first image load (scale is 1 and no translation)
+            if (this.scale === 1 && this.translateX === 0 && this.translateY === 0) {
+                this.fitToView();
+            } else {
+                // Maintain current zoom and pan
+                this.updateTransform();
+            }
         };
         this.image.onerror = () => {
             this.statusText.textContent = 'Error loading image';
@@ -158,6 +169,8 @@ class ImageViewer {
             this.currentDatasetIndex--;
             this.datasetSelect.value = this.currentDatasetIndex;
             this.updateDatasetCounter();
+            // Reset view when changing datasets
+            this.resetView();
             this.loadCurrentImage();
         }
     }
@@ -167,6 +180,8 @@ class ImageViewer {
             this.currentDatasetIndex++;
             this.datasetSelect.value = this.currentDatasetIndex;
             this.updateDatasetCounter();
+            // Reset view when changing datasets
+            this.resetView();
             this.loadCurrentImage();
         }
     }
@@ -183,11 +198,32 @@ class ImageViewer {
         }
     }
     
+    zoomAtPoint(factor, x, y) {
+        const newScale = this.scale * factor;
+        if (newScale >= this.minScale && newScale <= this.maxScale) {
+            // Get the viewer center point
+            const viewerRect = this.viewer.getBoundingClientRect();
+            const viewerCenterX = viewerRect.width / 2;
+            const viewerCenterY = viewerRect.height / 2;
+            
+            // Calculate current mouse position in world coordinates
+            // (accounting for current scale and translation from center)
+            const worldX = (x - viewerCenterX - this.translateX) / this.scale;
+            const worldY = (y - viewerCenterY - this.translateY) / this.scale;
+            
+            // Update scale
+            this.scale = newScale;
+            
+            // Calculate new translation to keep the world point under the cursor
+            this.translateX = x - viewerCenterX - worldX * this.scale;
+            this.translateY = y - viewerCenterY - worldY * this.scale;
+            
+            this.updateTransform();
+        }
+    }
+    
     resetView() {
-        this.scale = 1;
-        this.translateX = 0;
-        this.translateY = 0;
-        this.updateTransform();
+        this.fitToView();
     }
     
     fitToView() {
