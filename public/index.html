@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Viewer</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <div class="controls">
+            <div class="dataset-selector">
+                <label for="datasetSelect">Dataset:</label>
+                <select id="datasetSelect"></select>
+                <span id="datasetCounter"></span>
+            </div>
+            <div class="navigation-buttons">
+                <button id="prevDataset" title="Previous dataset">◀</button>
+                <button id="nextDataset" title="Next dataset">▶</button>
+            </div>
+        </div>
+        
+        <div class="image-type-controls">
+            <button class="image-type-btn active" data-type="pre">Pre-Event</button>
+            <button class="image-type-btn" data-type="post">Post-Event</button>
+            <button class="image-type-btn" data-type="change">Change Detection</button>
+        </div>
+        
+        <div class="viewer-container">
+            <div id="imageViewer" class="image-viewer">
+                <img id="mainImage" src="" alt="Image viewer">
+            </div>
+            <div class="zoom-controls">
+                <button id="zoomIn">+</button>
+                <button id="zoomOut">-</button>
+                <button id="resetZoom">Reset</button>
+            </div>
+        </div>
+        
+        <div class="status-bar">
+            <span id="statusText">Ready</span>
+            <span id="zoomLevel">100%</span>
+        </div>
+    </div>
+    
+    <script src="app.js"></script>
+</body>
+</html>
