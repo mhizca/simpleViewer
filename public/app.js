@@ -13,6 +13,10 @@ class ImageViewer {
         this.translateX = 0;
         this.translateY = 0;
         
+        // Touch tracking
+        this.touches = [];
+        this.lastTouchDistance = 0;
+        
         this.init();
     }
     
@@ -64,10 +68,16 @@ class ImageViewer {
             this.loadCurrentImage();
         });
         
+        // Mouse events
         this.viewer.addEventListener('mousedown', (e) => this.startDrag(e));
         this.viewer.addEventListener('mousemove', (e) => this.drag(e));
         this.viewer.addEventListener('mouseup', () => this.endDrag());
         this.viewer.addEventListener('mouseleave', () => this.endDrag());
+        
+        // Touch events for mobile
+        this.viewer.addEventListener('touchstart', (e) => this.handleTouchStart(e));
+        this.viewer.addEventListener('touchmove', (e) => this.handleTouchMove(e));
+        this.viewer.addEventListener('touchend', (e) => this.handleTouchEnd(e));
         
         this.viewer.addEventListener('wheel', (e) => {
             e.preventDefault();
@@ -296,6 +306,81 @@ class ImageViewer {
     updateTransform() {
         this.image.style.transform = `translate(${this.translateX}px, ${this.translateY}px) scale(${this.scale})`;
         this.zoomLevelText.textContent = `${Math.round(this.scale * 100)}%`;
+    }
+    
+    // Touch event handlers for mobile support
+    handleTouchStart(e) {
+        e.preventDefault();
+        this.touches = Array.from(e.touches);
+        
+        if (this.touches.length === 1) {
+            // Single touch - start dragging
+            const touch = this.touches[0];
+            this.isDragging = true;
+            this.startX = touch.clientX - this.translateX;
+            this.startY = touch.clientY - this.translateY;
+        } else if (this.touches.length === 2) {
+            // Two finger touch - prepare for pinch zoom
+            this.isDragging = false;
+            const touch1 = this.touches[0];
+            const touch2 = this.touches[1];
+            this.lastTouchDistance = Math.sqrt(
+                Math.pow(touch2.clientX - touch1.clientX, 2) +
+                Math.pow(touch2.clientY - touch1.clientY, 2)
+            );
+        }
+    }
+    
+    handleTouchMove(e) {
+        e.preventDefault();
+        this.touches = Array.from(e.touches);
+        
+        if (this.touches.length === 1 && this.isDragging) {
+            // Single touch drag
+            const touch = this.touches[0];
+            this.translateX = touch.clientX - this.startX;
+            this.translateY = touch.clientY - this.startY;
+            this.updateTransform();
+        } else if (this.touches.length === 2) {
+            // Two finger pinch zoom
+            const touch1 = this.touches[0];
+            const touch2 = this.touches[1];
+            const currentDistance = Math.sqrt(
+                Math.pow(touch2.clientX - touch1.clientX, 2) +
+                Math.pow(touch2.clientY - touch1.clientY, 2)
+            );
+            
+            if (this.lastTouchDistance > 0) {
+                const delta = currentDistance / this.lastTouchDistance;
+                const centerX = (touch1.clientX + touch2.clientX) / 2;
+                const centerY = (touch1.clientY + touch2.clientY) / 2;
+                
+                const rect = this.viewer.getBoundingClientRect();
+                const x = centerX - rect.left;
+                const y = centerY - rect.top;
+                
+                this.zoomAtPoint(delta, x, y);
+            }
+            
+            this.lastTouchDistance = currentDistance;
+        }
+    }
+    
+    handleTouchEnd(e) {
+        e.preventDefault();
+        this.touches = Array.from(e.touches);
+        
+        if (this.touches.length === 0) {
+            this.isDragging = false;
+            this.lastTouchDistance = 0;
+        } else if (this.touches.length === 1) {
+            // Switched from two finger to one finger - restart single touch drag
+            const touch = this.touches[0];
+            this.isDragging = true;
+            this.startX = touch.clientX - this.translateX;
+            this.startY = touch.clientY - this.translateY;
+            this.lastTouchDistance = 0;
+        }
     }
 }
 

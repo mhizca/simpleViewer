@@ -193,7 +193,47 @@ body {
     }
     
     .image-type-btn {
-        padding: 8px 16px;
-        font-size: 14px;
+        padding: 12px 20px;
+        font-size: 16px;
+        min-height: 44px;
+    }
+    
+    .navigation-buttons button {
+        padding: 12px 20px;
+        font-size: 16px;
+        min-height: 44px;
+        min-width: 44px;
+    }
+    
+    .zoom-controls button {
+        width: 50px;
+        height: 50px;
+        font-size: 20px;
+        touch-action: manipulation;
+    }
+    
+    .zoom-controls button:last-child {
+        width: auto;
+        padding: 0 20px;
+        min-width: 80px;
+        font-size: 16px;
+    }
+    
+    .project-selector select,
+    .dataset-selector select {
+        padding: 10px 15px;
+        font-size: 16px;
+        min-height: 44px;
+    }
+    
+    /* Prevent zoom on double tap */
+    .viewer-container {
+        touch-action: none;
+    }
+    
+    /* Make status bar text larger on mobile */
+    .status-bar {
+        font-size: 16px;
+        padding: 15px;
     }
 }
