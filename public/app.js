@@ -115,7 +115,7 @@ class ImageViewer {
             }
             
             this.datasetSelect.innerHTML = this.datasets.map((dataset, index) => 
-                `<option value="${index}">Dataset ${dataset.id}</option>`
+                `<option value="${index}">Image pair ${dataset.id}</option>`
             ).join('');
             
             this.updateDatasetCounter();

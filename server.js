@@ -95,7 +95,7 @@ app.get('/api/datasets/:project', requireAuth, (req, res) => {
         });
       }
     } else if (project === 'coregistered') {
-      const coregisteredPath = path.join(__dirname, 'co-registered');
+      const coregisteredPath = path.join(__dirname, 'coregistered-only');
       
       if (fs.existsSync(coregisteredPath)) {
         const folders = fs.readdirSync(coregisteredPath)
@@ -116,8 +116,8 @@ app.get('/api/datasets/:project', requireAuth, (req, res) => {
             const sortedImages = files.sort();
             datasets.push({
               id: folder,
-              preEvent: `/api/image/co-registered/${folder}/${sortedImages[0]}`,
-              postEvent: `/api/image/co-registered/${folder}/${sortedImages[1]}`,
+              preEvent: `/api/image/coregistered-only/${folder}/${sortedImages[0]}`,
+              postEvent: `/api/image/coregistered-only/${folder}/${sortedImages[1]}`,
               changeDetection: null
             });
           }
