@@ -36,6 +36,15 @@
         <div class="viewer-container">
             <div id="imageViewer" class="image-viewer">
                 <img id="mainImage" src="" alt="Image viewer">
+                <div id="loadingIndicator" class="loading-indicator" style="display: none;">
+                    <div class="loading-spinner"></div>
+                    <div class="loading-text">Loading image...</div>
+                    <div class="loading-progress">
+                        <div class="progress-bar">
+                            <div id="progressBarFill" class="progress-fill"></div>
+                        </div>
+                    </div>
+                </div>
             </div>
             <div class="zoom-controls">
                 <button id="zoomIn">+</button>
@@ -47,10 +56,15 @@
         <div class="status-bar">
             <span id="statusText">Ready</span>
             <span id="imageName"></span>
+            <div id="performanceIndicator" class="performance-indicator">
+                <span class="network-quality"></span>
+                <span class="metrics-text">Cache: 0% | Mem: 0MB</span>
+            </div>
             <span id="zoomLevel">100%</span>
         </div>
     </div>
     
     <script src="app.js"></script>
+    <script src="performance-monitor.js"></script>
 </body>
 </html>

@@ -5,7 +5,11 @@
   "main": "index.js",
   "scripts": {
     "start": "node server.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "perf-test": "node run-performance-tests.js",
+    "perf-test-server": "node comprehensive-performance-test.js",
+    "perf-test-basic": "node performance-test.js", 
+    "perf-demo": "node demo-performance-tests.js"
   },
   "keywords": [],
   "author": "",
@@ -16,5 +20,8 @@
     "dotenv": "^17.2.1",
     "express": "^5.1.0",
     "express-session": "^1.18.2"
+  },
+  "optionalDependencies": {
+    "puppeteer": "^22.0.0"
   }
 }

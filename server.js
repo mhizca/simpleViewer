@@ -3,6 +3,7 @@ const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
 const session = require('express-session');
+const crypto = require('crypto');
 require('dotenv').config();
 
 const app = express();
@@ -27,6 +28,121 @@ const requireAuth = (req, res, next) => {
     next();
   } else {
     res.redirect('/login.html');
+  }
+};
+
+// Helper function to get MIME type based on file extension
+const getMimeType = (filename) => {
+  const ext = path.extname(filename).toLowerCase();
+  const mimeTypes = {
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.png': 'image/png',
+    '.gif': 'image/gif',
+    '.webp': 'image/webp',
+    '.tiff': 'image/tiff',
+    '.tif': 'image/tiff'
+  };
+  return mimeTypes[ext] || 'application/octet-stream';
+};
+
+// Optimized image serving function
+const serveOptimizedImage = async (req, res, imagePath) => {
+  const fullPath = path.resolve(__dirname, imagePath);
+  
+  // Security check - ensure path is within project directory
+  if (!fullPath.startsWith(path.resolve(__dirname))) {
+    return res.status(403).json({ error: 'Access denied' });
+  }
+  
+  try {
+    // Check if file exists and get stats
+    const stats = await fs.promises.stat(fullPath);
+    
+    // Generate strong ETag using file stats and content hash for better cache validation
+    const etag = `"${stats.mtime.getTime()}-${stats.size}"`;
+    const lastModified = stats.mtime.toUTCString();
+    const mimeType = getMimeType(path.basename(fullPath));
+    
+    // Set comprehensive caching headers
+    res.set({
+      'Cache-Control': 'public, max-age=604800, immutable', // 7 days cache for better performance
+      'ETag': etag,
+      'Last-Modified': lastModified,
+      'Accept-Ranges': 'bytes',
+      'Content-Type': mimeType,
+      'Vary': 'Accept-Encoding'
+    });
+    
+    // Handle conditional requests (304 Not Modified)
+    const ifNoneMatch = req.headers['if-none-match'];
+    const ifModifiedSince = req.headers['if-modified-since'];
+    
+    if ((ifNoneMatch && ifNoneMatch === etag) || 
+        (ifModifiedSince && new Date(ifModifiedSince) >= stats.mtime)) {
+      return res.status(304).end();
+    }
+    
+    // Handle range requests for partial content delivery
+    const range = req.headers.range;
+    if (range) {
+      const ranges = range.replace(/bytes=/, '').split('-');
+      const start = parseInt(ranges[0], 10) || 0;
+      const end = ranges[1] ? parseInt(ranges[1], 10) : stats.size - 1;
+      
+      // Validate range
+      if (start >= stats.size || end >= stats.size || start > end) {
+        res.set('Content-Range', `bytes */${stats.size}`);
+        return res.status(416).json({ error: 'Range Not Satisfiable' });
+      }
+      
+      const chunkSize = (end - start) + 1;
+      
+      res.set({
+        'Content-Range': `bytes ${start}-${end}/${stats.size}`,
+        'Content-Length': chunkSize.toString()
+      });
+      
+      res.status(206);
+      
+      // Create read stream with proper error handling
+      const stream = fs.createReadStream(fullPath, { start, end });
+      
+      // Handle stream errors
+      stream.on('error', (err) => {
+        console.error('Stream error:', err);
+        if (!res.headersSent) {
+          res.status(500).json({ error: 'Failed to read file' });
+        }
+      });
+      
+      // Handle client disconnect
+      req.on('close', () => {
+        stream.destroy();
+      });
+      
+      return stream.pipe(res);
+    }
+    
+    // For full file requests, set content length and use sendFile for better performance
+    res.set('Content-Length', stats.size.toString());
+    
+    // Use sendFile with proper error handling for full file delivery
+    res.sendFile(fullPath, (err) => {
+      if (err) {
+        console.error('SendFile error:', err);
+        if (!res.headersSent) {
+          res.status(500).json({ error: 'Failed to serve file' });
+        }
+      }
+    });
+    
+  } catch (error) {
+    console.error('File access error:', error);
+    if (error.code === 'ENOENT') {
+      return res.status(404).json({ error: 'Image not found' });
+    }
+    return res.status(500).json({ error: 'Internal server error' });
   }
 };
 
@@ -132,24 +248,14 @@ app.get('/api/datasets/:project', requireAuth, (req, res) => {
   }
 });
 
-app.get('/api/image/:folder/:subfolder/:filename', requireAuth, (req, res) => {
+app.get('/api/image/:folder/:subfolder/:filename', requireAuth, async (req, res) => {
   const { folder, subfolder, filename } = req.params;
   const imagePath = path.join(folder, subfolder, filename);
-  const fullPath = path.join(__dirname, imagePath);
-  
-  if (!fullPath.startsWith(__dirname)) {
-    return res.status(403).send('Access denied');
-  }
-  
-  if (fs.existsSync(fullPath)) {
-    res.sendFile(fullPath);
-  } else {
-    res.status(404).send('Image not found');
-  }
+  await serveOptimizedImage(req, res, imagePath);
 });
 
 // Route for co-registered images in results folder
-app.get('/api/image/:folder/:subfolder/:subsubfolder/:filename', requireAuth, (req, res) => {
+app.get('/api/image/:folder/:subfolder/:subsubfolder/:filename', requireAuth, async (req, res) => {
   const { folder, subfolder, subsubfolder, filename } = req.params;
   const imagePath = path.join(folder, subfolder, subsubfolder, filename);
   const fullPath = path.join(__dirname, imagePath);
@@ -158,9 +264,52 @@ app.get('/api/image/:folder/:subfolder/:subsubfolder/:filename', requireAuth, (r
     return res.status(403).send('Access denied');
   }
   
-  if (fs.existsSync(fullPath)) {
-    res.sendFile(fullPath);
-  } else {
+  try {
+    // Use async file access instead of sync
+    await fs.promises.access(fullPath);
+    
+    // Get file stats for ETag and Last-Modified headers
+    const stats = await fs.promises.stat(fullPath);
+    const etag = `"${stats.mtime.getTime()}-${stats.size}"`;
+    const lastModified = stats.mtime.toUTCString();
+    
+    // Set caching headers
+    res.set({
+      'Cache-Control': 'public, max-age=86400, immutable', // 24 hours cache
+      'ETag': etag,
+      'Last-Modified': lastModified,
+      'Accept-Ranges': 'bytes' // Enable range requests for partial content
+    });
+    
+    // Check if client has cached version
+    if (req.headers['if-none-match'] === etag || 
+        req.headers['if-modified-since'] === lastModified) {
+      return res.status(304).end();
+    }
+    
+    // Handle range requests for progressive loading
+    if (req.headers.range) {
+      const range = req.headers.range;
+      const positions = range.replace(/bytes=/, "").split("-");
+      const start = parseInt(positions[0], 10);
+      const total = stats.size;
+      const end = positions[1] ? parseInt(positions[1], 10) : total - 1;
+      const chunksize = (end - start) + 1;
+      
+      res.set({
+        'Content-Range': `bytes ${start}-${end}/${total}`,
+        'Accept-Ranges': 'bytes',
+        'Content-Length': chunksize,
+        'Content-Type': 'image/jpeg'
+      });
+      res.status(206);
+      
+      const stream = fs.createReadStream(fullPath, { start, end });
+      stream.pipe(res);
+    } else {
+      res.sendFile(fullPath);
+    }
+  } catch (error) {
     res.status(404).send('Image not found');
   }
 });
