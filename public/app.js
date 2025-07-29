@@ -33,7 +33,10 @@ class ImageViewer {
             lastMemoryCheck: Date.now()
         };
         this.preloadQueue = new Map(); // Priority-based preload queue
-        this.maxCacheSize = 12; // Increased cache size
+        
+        // Circular buffer for simple FIFO eviction
+        this.cacheOrder = []; // Track insertion order for FIFO eviction
+        this.maxCacheSize = 6; // Circular buffer cache size
         this.maxMemoryMB = 500; // Max memory usage in MB
         this.preloadAbortControllers = new Map(); // Track preload operations
         this.networkQuality = 'good'; // Track network performance
@@ -110,10 +113,21 @@ class ImageViewer {
         this.preloadAbortControllers.clear();
         this.preloadQueue.clear();
         
-        // Reduce cache size more aggressively
+        // Reduce cache size more aggressively with circular buffer
         const targetSize = Math.floor(this.maxCacheSize * 0.5);
-        while (this.imageCache.size > targetSize) {
-            this.performLRUEviction();
+        while (this.imageCache.size > targetSize && this.cacheOrder.length > 0) {
+            const oldestUrl = this.cacheOrder.shift();
+            const entry = this.imageCache.get(oldestUrl);
+            if (entry) {
+                // Clean up blob URLs
+                if (entry.metadata?.blobUrl) {
+                    URL.revokeObjectURL(entry.metadata.blobUrl);
+                }
+                if (entry.image?.src?.startsWith('blob:')) {
+                    URL.revokeObjectURL(entry.image.src);
+                }
+                this.imageCache.delete(oldestUrl);
+            }
         }
         
         console.log(`Aggressive cleanup completed. Cache size: ${this.imageCache.size}`);
@@ -206,6 +220,7 @@ class ImageViewer {
         this.imageCache.clear();
         this.preloadQueue.clear();
         this.preloadAbortControllers.clear();
+        this.cacheOrder.length = 0; // Clear circular buffer order tracking
         
         console.log('ImageViewer cleanup completed');
     }
@@ -976,8 +991,8 @@ class ImageViewer {
     }
     
     addToCache(imageUrl, img, metadata = {}) {
-        // Perform LRU eviction if needed
-        this.performLRUEviction();
+        // Perform circular buffer eviction if needed
+        this.performCircularBufferEviction();
         
         // Add metadata for intelligent cache management
         const cacheEntry = {
@@ -994,52 +1009,43 @@ class ImageViewer {
             }
         };
         
+        // Add to cache and track order for circular buffer
         this.imageCache.set(imageUrl, cacheEntry);
+        
+        // Remove from cacheOrder if already exists (to avoid duplicates when re-accessing)
+        const existingIndex = this.cacheOrder.indexOf(imageUrl);
+        if (existingIndex !== -1) {
+            this.cacheOrder.splice(existingIndex, 1);
+        }
+        
+        // Add to end of queue (most recent)
+        this.cacheOrder.push(imageUrl);
+        
         this.updateMemoryMetrics();
     }
     
-    performLRUEviction() {
-        if (this.imageCache.size < this.maxCacheSize) return;
-        
-        // Sort by access score (combination of last accessed time, access count, and priority)
-        const entries = Array.from(this.imageCache.entries())
-            .map(([url, entry]) => ({
-                url,
-                entry,
-                score: this.calculateAccessScore(entry.metadata)
-            }))
-            .sort((a, b) => a.score - b.score); // Lower score = more likely to evict
-        
-        // Evict the least valuable entries
-        const toEvict = entries.slice(0, Math.ceil(this.maxCacheSize * 0.2)); // Evict 20%
-        toEvict.forEach(({ url, entry }) => {
-            console.log(`Evicting from cache: ${url}`);
+    performCircularBufferEviction() {
+        // Simple circular buffer: when cache reaches limit, remove oldest image (FIFO)
+        while (this.imageCache.size >= this.maxCacheSize && this.cacheOrder.length > 0) {
+            const oldestUrl = this.cacheOrder.shift(); // Remove first (oldest) entry
+            const entry = this.imageCache.get(oldestUrl);
             
-            // Clean up blob URLs when evicting
-            if (entry.metadata.blobUrl) {
-                URL.revokeObjectURL(entry.metadata.blobUrl);
+            if (entry) {
+                console.log(`Circular buffer evicting: ${oldestUrl}`);
+                
+                // Clean up blob URLs when evicting
+                if (entry.metadata?.blobUrl) {
+                    URL.revokeObjectURL(entry.metadata.blobUrl);
+                }
+                if (entry.image?.src?.startsWith('blob:')) {
+                    URL.revokeObjectURL(entry.image.src);
+                }
+                
+                this.imageCache.delete(oldestUrl);
             }
-            if (entry.image && entry.image.src && entry.image.src.startsWith('blob:')) {
-                URL.revokeObjectURL(entry.image.src);
-            }
-            
-            this.imageCache.delete(url);
-        });
+        }
     }
     
-    calculateAccessScore(metadata) {
-        const now = Date.now();
-        const timeSinceAccess = now - metadata.lastAccessed;
-        const timeSinceAdded = now - metadata.addedAt;
-        
-        // Higher access count and lower priority = higher score (less likely to evict)
-        // Recent access = higher score
-        const accessScore = metadata.accessCount * 1000;
-        const recencyScore = Math.max(0, 10000 - timeSinceAccess / 1000);
-        const priorityScore = (10 - metadata.priority) * 500;
-        
-        return accessScore + recencyScore + priorityScore;
-    }
     
     estimateImageSize(img) {
         // Rough estimate: width * height * 4 bytes (RGBA)
