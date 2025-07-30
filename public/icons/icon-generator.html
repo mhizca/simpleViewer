@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PWA Icon Generator</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .icon-preview {
+            display: inline-block;
+            margin: 10px;
+            text-align: center;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        canvas {
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .size-label {
+            margin-top: 10px;
+            font-weight: bold;
+            color: #333;
+        }
+        .generate-btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            margin: 20px 0;
+        }
+        .generate-btn:hover {
+            background: #5a6fd8;
+        }
+        .instructions {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border-left: 4px solid #667eea;
+        }
+    </style>
+</head>
+<body>
+    <h1>PWA Icon Generator for SimpleViewer</h1>
+    
+    <div class="instructions">
+        <h3>Instructions:</h3>
+        <ol>
+            <li>Click "Generate Icons" to create all required PWA icons</li>
+            <li>Right-click each generated icon and save as the filename shown</li>
+            <li>Icons are automatically generated with the SimpleViewer logo and appropriate sizing</li>
+            <li>The generated icons will work with the manifest.json file</li>
+        </ol>
+    </div>
+    
+    <button class="generate-btn" onclick="generateAllIcons()">Generate Icons</button>
+    
+    <div id="icon-container"></div>
+    
+    <script>
+        const iconSizes = [72, 96, 128, 144, 152, 192, 384, 512];
+        
+        function generateAllIcons() {
+            const container = document.getElementById('icon-container');
+            container.innerHTML = '';
+            
+            iconSizes.forEach(size => {
+                const iconDiv = document.createElement('div');
+                iconDiv.className = 'icon-preview';
+                
+                const canvas = document.createElement('canvas');
+                canvas.width = size;
+                canvas.height = size;
+                
+                const ctx = canvas.getContext('2d');
+                
+                // Generate icon design
+                generateIconDesign(ctx, size);
+                
+                const label = document.createElement('div');
+                label.className = 'size-label';
+                label.textContent = `${size}x${size} - icon-${size}x${size}.png`;
+                
+                iconDiv.appendChild(canvas);
+                iconDiv.appendChild(label);
+                container.appendChild(iconDiv);
+                
+                // Add download functionality
+                canvas.addEventListener('contextmenu', (e) => {
+                    e.preventDefault();
+                    downloadCanvas(canvas, `icon-${size}x${size}.png`);
+                });
+            });
+        }
+        
+        function generateIconDesign(ctx, size) {
+            // Clear canvas
+            ctx.clearRect(0, 0, size, size);
+            
+            // Background gradient
+            const gradient = ctx.createLinearGradient(0, 0, size, size);
+            gradient.addColorStop(0, '#667eea');
+            gradient.addColorStop(1, '#764ba2');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, size, size);
+            
+            // Add some rounded corners effect
+            ctx.globalCompositeOperation = 'destination-in';
+            ctx.beginPath();
+            const cornerRadius = size * 0.125; // 12.5% corner radius
+            ctx.roundRect(0, 0, size, size, cornerRadius);
+            ctx.fill();
+            ctx.globalCompositeOperation = 'source-over';
+            
+            // Icon design - Camera/Image viewer symbol
+            const centerX = size / 2;
+            const centerY = size / 2;
+            const iconSize = size * 0.6;
+            
+            ctx.fillStyle = 'white';
+            ctx.strokeStyle = 'white';
+            ctx.lineWidth = size * 0.04;
+            
+            // Camera body
+            const bodyWidth = iconSize * 0.8;
+            const bodyHeight = iconSize * 0.6;
+            const bodyX = centerX - bodyWidth / 2;
+            const bodyY = centerY - bodyHeight / 2;
+            
+            ctx.fillRect(bodyX, bodyY, bodyWidth, bodyHeight);
+            
+            // Camera lens
+            const lensRadius = iconSize * 0.2;
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, lensRadius, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.lineWidth = size * 0.02;
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, lensRadius * 0.6, 0, Math.PI * 2);
+            ctx.stroke();
+            
+            // Viewfinder
+            const viewfinderSize = iconSize * 0.15;
+            ctx.fillRect(centerX + bodyWidth * 0.25, bodyY - viewfinderSize * 0.5, viewfinderSize, viewfinderSize);
+            
+            // Image elements (small rectangles to represent images)
+            const imageSize = iconSize * 0.1;
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+            ctx.fillRect(bodyX + bodyWidth * 0.1, bodyY + bodyHeight * 0.7, imageSize, imageSize * 0.7);
+            ctx.fillRect(bodyX + bodyWidth * 0.25, bodyY + bodyHeight * 0.7, imageSize, imageSize * 0.7);
+            ctx.fillRect(bodyX + bodyWidth * 0.4, bodyY + bodyHeight * 0.7, imageSize, imageSize * 0.7);
+        }
+        
+        function downloadCanvas(canvas, filename) {
+            const link = document.createElement('a');
+            link.download = filename;
+            link.href = canvas.toDataURL();
+            link.click();
+        }
+        
+        // Polyfill for roundRect if not available
+        if (!CanvasRenderingContext2D.prototype.roundRect) {
+            CanvasRenderingContext2D.prototype.roundRect = function(x, y, width, height, radius) {
+                this.beginPath();
+                this.moveTo(x + radius, y);
+                this.lineTo(x + width - radius, y);
+                this.quadraticCurveTo(x + width, y, x + width, y + radius);
+                this.lineTo(x + width, y + height - radius);
+                this.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+                this.lineTo(x + radius, y + height);
+                this.quadraticCurveTo(x, y + height, x, y + height - radius);
+                this.lineTo(x, y + radius);
+                this.quadraticCurveTo(x, y, x + radius, y);
+                this.closePath();
+            };
+        }
+    </script>
+</body>
+</html>

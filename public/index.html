@@ -21,6 +21,19 @@
                 <select id="datasetSelect"></select>
                 <span id="datasetCounter"></span>
             </div>
+            <div class="resolution-controls">
+                <div class="resolution-toggle">
+                    <label for="resolutionToggle">Resolution:</label>
+                    <div class="toggle-switch">
+                        <input type="checkbox" id="resolutionToggle">
+                        <label for="resolutionToggle" class="toggle-label">
+                            <span class="toggle-inner"></span>
+                            <span class="toggle-switch-handle"></span>
+                        </label>
+                    </div>
+                    <span id="resolutionStatus" class="resolution-status downsampled">Downsampled (2x)</span>
+                </div>
+            </div>
             <div class="navigation-buttons">
                 <button id="prevDataset" title="Previous dataset">◀</button>
                 <button id="nextDataset" title="Next dataset">▶</button>

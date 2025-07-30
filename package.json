@@ -9,7 +9,13 @@
     "perf-test": "node run-performance-tests.js",
     "perf-test-server": "node comprehensive-performance-test.js",
     "perf-test-basic": "node performance-test.js", 
-    "perf-demo": "node demo-performance-tests.js"
+    "perf-demo": "node demo-performance-tests.js",
+    "check-images": "node check-progressive-status.js",
+    "convert-images": "node convert-to-progressive.js",
+    "convert-images:dry": "node convert-to-progressive.js --dry-run",
+    "downsample": "node create-downsampled-images.js",
+    "downsample:dry": "node create-downsampled-images.js --dry-run",
+    "downsample:force": "node create-downsampled-images.js --force"
   },
   "keywords": [],
   "author": "",

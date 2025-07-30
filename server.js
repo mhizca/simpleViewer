@@ -46,6 +46,50 @@ const getMimeType = (filename) => {
   return mimeTypes[ext] || 'application/octet-stream';
 };
 
+// Helper function to generate both full and downsampled image URLs
+const generateImageUrls = (basePath, filename) => {
+  const ext = path.extname(filename);
+  const base = path.basename(filename, ext);
+  const downsampledFilename = `${base}_2x${ext}`;
+  
+  return {
+    full: `/api/image/${basePath}/${filename}`,
+    downsampled: `/api/image/${basePath}/${downsampledFilename}`
+  };
+};
+
+// Helper function to check if downsampled version exists
+const hasDownsampledVersion = (fullPath) => {
+  const dir = path.dirname(fullPath);
+  const filename = path.basename(fullPath);
+  const ext = path.extname(filename);
+  const base = path.basename(filename, ext);
+  const downsampledFilename = `${base}_2x${ext}`;
+  const downsampledPath = path.join(dir, downsampledFilename);
+  
+  return fs.existsSync(downsampledPath);
+};
+
+// Add progressive JPEG hint for browsers
+const getImageHeaders = (mimeType, stats, etag) => {
+  const headers = {
+    'Cache-Control': 'public, max-age=604800, immutable', // 7 days cache
+    'ETag': etag,
+    'Last-Modified': stats.mtime.toUTCString(),
+    'Accept-Ranges': 'bytes',
+    'Content-Type': mimeType,
+    'Vary': 'Accept-Encoding'
+  };
+  
+  // Add hint for progressive JPEG rendering
+  if (mimeType === 'image/jpeg') {
+    headers['X-Content-Type-Options'] = 'nosniff';
+    headers['X-Progressive'] = 'true'; // Hint for CDNs and browsers
+  }
+  
+  return headers;
+};
+
 // Optimized image serving function
 const serveOptimizedImage = async (req, res, imagePath) => {
   const fullPath = path.resolve(__dirname, imagePath);
@@ -65,14 +109,7 @@ const serveOptimizedImage = async (req, res, imagePath) => {
     const mimeType = getMimeType(path.basename(fullPath));
     
     // Set comprehensive caching headers
-    res.set({
-      'Cache-Control': 'public, max-age=604800, immutable', // 7 days cache for better performance
-      'ETag': etag,
-      'Last-Modified': lastModified,
-      'Accept-Ranges': 'bytes',
-      'Content-Type': mimeType,
-      'Vary': 'Accept-Encoding'
-    });
+    res.set(getImageHeaders(mimeType, stats, etag));
     
     // Handle conditional requests (304 Not Modified)
     const ifNoneMatch = req.headers['if-none-match'];
@@ -196,16 +233,28 @@ app.get('/api/datasets/:project', requireAuth, (req, res) => {
           const folderPath = path.join(analysisPath, folder);
           const files = fs.readdirSync(folderPath);
           
-          const imageFiles = files.filter(f => f.toLowerCase().endsWith('.jpg') || f.toLowerCase().endsWith('.png'));
+          // Filter out downsampled images (_2x suffix) from main image list
+          const imageFiles = files.filter(f => 
+            (f.toLowerCase().endsWith('.jpg') || f.toLowerCase().endsWith('.png')) &&
+            !f.includes('_2x.')
+          );
           const ssiFile = files.find(f => f.startsWith('SSI_coeff_'));
           
           if (imageFiles.length >= 2) {
             const sortedImages = imageFiles.filter(f => !f.startsWith('SSI_')).sort();
+            
+            // Generate URLs for both full and downsampled versions
+            const preEventUrls = generateImageUrls(`analysis/${folder}`, sortedImages[0]);
+            const postEventUrls = generateImageUrls(`analysis/${folder}`, sortedImages[1]);
+            
+            // Generate change detection URLs for both resolutions
+            const changeDetectionUrls = ssiFile ? generateImageUrls(`analysis/${folder}`, ssiFile) : null;
+            
             datasets.push({
               id: folder,
-              preEvent: `/api/image/analysis/${folder}/${sortedImages[0]}`,
-              postEvent: `/api/image/analysis/${folder}/${sortedImages[1]}`,
-              changeDetection: ssiFile ? `/api/image/analysis/${folder}/${ssiFile}` : null
+              preEvent: preEventUrls,
+              postEvent: postEventUrls,
+              changeDetection: changeDetectionUrls
             });
           }
         });
@@ -226,14 +275,22 @@ app.get('/api/datasets/:project', requireAuth, (req, res) => {
         folders.forEach(folder => {
           const folderPath = path.join(coregisteredPath, folder);
           const files = fs.readdirSync(folderPath)
-            .filter(f => f.toLowerCase().endsWith('.jpg') || f.toLowerCase().endsWith('.png'));
+            .filter(f => 
+              (f.toLowerCase().endsWith('.jpg') || f.toLowerCase().endsWith('.png')) &&
+              !f.includes('_2x.')
+            );
           
           if (files.length >= 2) {
             const sortedImages = files.sort();
+            
+            // Generate URLs for both full and downsampled versions
+            const preEventUrls = generateImageUrls(`coregistered-only/${folder}`, sortedImages[0]);
+            const postEventUrls = generateImageUrls(`coregistered-only/${folder}`, sortedImages[1]);
+            
             datasets.push({
               id: folder,
-              preEvent: `/api/image/coregistered-only/${folder}/${sortedImages[0]}`,
-              postEvent: `/api/image/coregistered-only/${folder}/${sortedImages[1]}`,
+              preEvent: preEventUrls,
+              postEvent: postEventUrls,
               changeDetection: null
             });
           }
@@ -248,70 +305,48 @@ app.get('/api/datasets/:project', requireAuth, (req, res) => {
   }
 });
 
+// Enhanced image serving route with resolution support
 app.get('/api/image/:folder/:subfolder/:filename', requireAuth, async (req, res) => {
   const { folder, subfolder, filename } = req.params;
-  const imagePath = path.join(folder, subfolder, filename);
+  const { resolution } = req.query;
+  
+  let actualFilename = filename;
+  
+  // If downsampled version is requested, modify filename
+  if (resolution === 'downsampled' || resolution === '2x') {
+    const ext = path.extname(filename);
+    const base = path.basename(filename, ext);
+    
+    // Check if it already has _2x suffix (direct access)
+    if (!base.endsWith('_2x')) {
+      actualFilename = `${base}_2x${ext}`;
+    }
+  }
+  
+  const imagePath = path.join(folder, subfolder, actualFilename);
   await serveOptimizedImage(req, res, imagePath);
 });
 
-// Route for co-registered images in results folder
+// Route for co-registered images in results folder (enhanced with resolution support)
 app.get('/api/image/:folder/:subfolder/:subsubfolder/:filename', requireAuth, async (req, res) => {
   const { folder, subfolder, subsubfolder, filename } = req.params;
-  const imagePath = path.join(folder, subfolder, subsubfolder, filename);
-  const fullPath = path.join(__dirname, imagePath);
+  const { resolution } = req.query;
   
-  if (!fullPath.startsWith(__dirname)) {
-    return res.status(403).send('Access denied');
+  let actualFilename = filename;
+  
+  // If downsampled version is requested, modify filename
+  if (resolution === 'downsampled' || resolution === '2x') {
+    const ext = path.extname(filename);
+    const base = path.basename(filename, ext);
+    
+    // Check if it already has _2x suffix (direct access)
+    if (!base.endsWith('_2x')) {
+      actualFilename = `${base}_2x${ext}`;
+    }
   }
   
-  try {
-    // Use async file access instead of sync
-    await fs.promises.access(fullPath);
-    
-    // Get file stats for ETag and Last-Modified headers
-    const stats = await fs.promises.stat(fullPath);
-    const etag = `"${stats.mtime.getTime()}-${stats.size}"`;
-    const lastModified = stats.mtime.toUTCString();
-    
-    // Set caching headers
-    res.set({
-      'Cache-Control': 'public, max-age=86400, immutable', // 24 hours cache
-      'ETag': etag,
-      'Last-Modified': lastModified,
-      'Accept-Ranges': 'bytes' // Enable range requests for partial content
-    });
-    
-    // Check if client has cached version
-    if (req.headers['if-none-match'] === etag || 
-        req.headers['if-modified-since'] === lastModified) {
-      return res.status(304).end();
-    }
-    
-    // Handle range requests for progressive loading
-    if (req.headers.range) {
-      const range = req.headers.range;
-      const positions = range.replace(/bytes=/, "").split("-");
-      const start = parseInt(positions[0], 10);
-      const total = stats.size;
-      const end = positions[1] ? parseInt(positions[1], 10) : total - 1;
-      const chunksize = (end - start) + 1;
-      
-      res.set({
-        'Content-Range': `bytes ${start}-${end}/${total}`,
-        'Accept-Ranges': 'bytes',
-        'Content-Length': chunksize,
-        'Content-Type': 'image/jpeg'
-      });
-      res.status(206);
-      
-      const stream = fs.createReadStream(fullPath, { start, end });
-      stream.pipe(res);
-    } else {
-      res.sendFile(fullPath);
-    }
-  } catch (error) {
-    res.status(404).send('Image not found');
-  }
+  const imagePath = path.join(folder, subfolder, subsubfolder, actualFilename);
+  await serveOptimizedImage(req, res, imagePath);
 });
 
 app.listen(PORT, () => {

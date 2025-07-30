@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Offline - Image Viewer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+        }
+        
+        .offline-container {
+            max-width: 500px;
+            padding: 40px 20px;
+        }
+        
+        .offline-icon {
+            font-size: 64px;
+            margin-bottom: 20px;
+            opacity: 0.8;
+        }
+        
+        h1 {
+            font-size: 32px;
+            margin-bottom: 16px;
+            font-weight: 600;
+        }
+        
+        p {
+            font-size: 18px;
+            margin-bottom: 16px;
+            opacity: 0.9;
+            line-height: 1.5;
+        }
+        
+        .offline-features {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 24px;
+            margin: 32px 0;
+            backdrop-filter: blur(10px);
+        }
+        
+        .offline-features h2 {
+            font-size: 20px;
+            margin-bottom: 16px;
+        }
+        
+        .features-list {
+            list-style: none;
+            text-align: left;
+        }
+        
+        .features-list li {
+            padding: 8px 0;
+            padding-left: 24px;
+            position: relative;
+        }
+        
+        .features-list li:before {
+            content: '✓';
+            position: absolute;
+            left: 0;
+            color: #4caf50;
+            font-weight: bold;
+        }
+        
+        .retry-button {
+            background: rgba(255, 255, 255, 0.2);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 25px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+            margin-top: 24px;
+        }
+        
+        .retry-button:hover {
+            background: rgba(255, 255, 255, 0.3);
+            border-color: rgba(255, 255, 255, 0.5);
+            transform: translateY(-2px);
+        }
+        
+        .network-status {
+            margin-top: 32px;
+            padding: 16px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            font-size: 14px;
+        }
+        
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+            vertical-align: middle;
+        }
+        
+        .status-offline {
+            background: #f44336;
+        }
+        
+        .status-online {
+            background: #4caf50;
+        }
+        
+        @media (max-width: 600px) {
+            .offline-container {
+                padding: 20px 16px;
+            }
+            
+            h1 {
+                font-size: 28px;
+            }
+            
+            p {
+                font-size: 16px;
+            }
+            
+            .offline-icon {
+                font-size: 48px;
+            }
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .checking {
+            animation: pulse 2s infinite;
+        }
+    </style>
+</head>
+<body>
+    <div class="offline-container">
+        <div class="offline-icon">📴</div>
+        <h1>You're Offline</h1>
+        <p>It looks like you've lost your internet connection. Don't worry, the Image Viewer works offline too!</p>
+        
+        <div class="offline-features">
+            <h2>Available Offline Features</h2>
+            <ul class="features-list">
+                <li>View previously cached images</li>
+                <li>Navigate between cached datasets</li>
+                <li>Zoom and pan functionality</li>
+                <li>Cached responsive images</li>
+                <li>Performance metrics</li>
+                <li>Cache management tools</li>
+            </ul>
+        </div>
+        
+        <p>Cached images and data will be available for viewing. New content will sync when you're back online.</p>
+        
+        <button class="retry-button" onclick="checkConnection()">Check Connection</button>
+        
+        <div class="network-status">
+            <span class="status-indicator status-offline" id="status-indicator"></span>
+            <span id="status-text">Connection Status: Offline</span>
+        </div>
+    </div>
+    
+    <script>
+        // Network status monitoring
+        function updateNetworkStatus() {
+            const indicator = document.getElementById('status-indicator');
+            const text = document.getElementById('status-text');
+            
+            if (navigator.onLine) {
+                indicator.className = 'status-indicator status-online';
+                text.textContent = 'Connection Status: Online - Redirecting...';
+                
+                // Redirect to main app after a short delay
+                setTimeout(() => {
+                    window.location.href = '/';
+                }, 1500);
+            } else {
+                indicator.className = 'status-indicator status-offline';
+                text.textContent = 'Connection Status: Offline';
+            }
+        }
+        
+        function checkConnection() {
+            const button = document.querySelector('.retry-button');
+            const text = document.getElementById('status-text');
+            
+            button.classList.add('checking');
+            text.textContent = 'Checking connection...';
+            
+            // Simulate checking process
+            setTimeout(() => {
+                button.classList.remove('checking');
+                updateNetworkStatus();
+                
+                if (!navigator.onLine) {
+                    // Try to fetch a small resource to double-check
+                    fetch('/api/health', { 
+                        method: 'HEAD',
+                        cache: 'no-store'
+                    })
+                    .then(() => {
+                        // If successful, we're actually online
+                        window.location.href = '/';
+                    })
+                    .catch(() => {
+                        // Confirmed offline
+                        text.textContent = 'Still offline. Try again in a moment.';
+                    });
+                }
+            }, 2000);
+        }
+        
+        // Listen for network status changes
+        window.addEventListener('online', updateNetworkStatus);
+        window.addEventListener('offline', updateNetworkStatus);
+        
+        // Initial status check
+        updateNetworkStatus();
+        
+        // Auto-retry every 30 seconds
+        setInterval(() => {
+            if (!navigator.onLine) {
+                checkConnection();
+            }
+        }, 30000);
+        
+        // Service Worker registration for this page
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/sw.js').catch(error => {
+                console.log('SW registration failed on offline page:', error);
+            });
+        }
+    </script>
+</body>
+</html>
