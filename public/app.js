@@ -18,6 +18,10 @@ class ImageViewer {
         this.touches = [];
         this.lastTouchDistance = 0;
         
+        // Zoom state tracking
+        this.isFirstLoad = true; // Track if this is the first image load
+        this.wasResolutionChanged = false; // Track if resolution was just changed
+        
         // Performance optimizations
         this.imageCache = new Map(); // Cache for preloaded images
         this.loadQueue = []; // Queue for sequential image loading
@@ -274,6 +278,7 @@ class ImageViewer {
         this.projectSelect.addEventListener('change', (e) => {
             this.currentProject = e.target.value;
             this.currentDatasetIndex = 0;
+            this.isFirstLoad = true; // Reset first load flag when changing projects
             this.loadDatasets();
             this.updateChangeDetectionButton();
         });
@@ -289,7 +294,7 @@ class ImageViewer {
         
         this.datasetSelect.addEventListener('change', (e) => {
             this.currentDatasetIndex = parseInt(e.target.value);
-            // Reset view when changing datasets via dropdown
+            // Reset view when changing datasets via dropdown (user expects fresh view when jumping)
             this.resetView();
             this.loadCurrentImage();
         });
@@ -299,6 +304,7 @@ class ImageViewer {
             this.updateCacheSize();
             this.updateResolutionStatus();
             this.updateMaxZoom(); // Update zoom limits based on resolution
+            this.wasResolutionChanged = true; // Mark that resolution was changed
             this.loadCurrentImage();
         });
         
@@ -825,11 +831,15 @@ class ImageViewer {
         const resolutionMode = this.useFullResolution ? 'Full' : '2x Downsampled';
         this.statusText.textContent = `Loaded: ${this.currentImageType}-event image (${resolutionMode}, Cache: ${cacheHitRate.toFixed(1)}%)`;
         
-        // Always fit to view when loading a new image
-        // Use a small delay to ensure the image is fully rendered
-        setTimeout(() => {
-            this.fitToView();
-        }, 10);
+        // Only fit to view on first load or after resolution change
+        if (this.isFirstLoad || this.wasResolutionChanged) {
+            // Use a small delay to ensure the image is fully rendered
+            setTimeout(() => {
+                this.fitToView();
+            }, 10);
+            this.isFirstLoad = false;
+            this.wasResolutionChanged = false;
+        }
     }
     
     updatePerformanceMetrics() {
@@ -1208,8 +1218,7 @@ class ImageViewer {
             this.currentDatasetIndex--;
             this.datasetSelect.value = this.currentDatasetIndex;
             this.updateDatasetCounter();
-            // Reset view when changing datasets
-            this.resetView();
+            // No longer reset view when changing datasets - maintain zoom/pan
             this.loadCurrentImage();
             
             // Cancel unnecessary preloads when navigating
@@ -1222,8 +1231,7 @@ class ImageViewer {
             this.currentDatasetIndex++;
             this.datasetSelect.value = this.currentDatasetIndex;
             this.updateDatasetCounter();
-            // Reset view when changing datasets
-            this.resetView();
+            // No longer reset view when changing datasets - maintain zoom/pan
             this.loadCurrentImage();
             
             // Cancel unnecessary preloads when navigating
