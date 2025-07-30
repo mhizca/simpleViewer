@@ -4,9 +4,10 @@ class ImageViewer {
         this.currentDatasetIndex = 0;
         this.currentImageType = 'pre';
         this.currentProject = 'analysis';
+        this.useFullResolution = false; // Default to downsampled resolution
         this.scale = 1;
         this.minScale = 0.1;
-        this.maxScale = 5;
+        this.maxScale = 10; // Will be updated dynamically based on resolution
         this.isDragging = false;
         this.startX = 0;
         this.startY = 0;
@@ -36,7 +37,7 @@ class ImageViewer {
         
         // Circular buffer for simple FIFO eviction
         this.cacheOrder = []; // Track insertion order for FIFO eviction
-        this.maxCacheSize = 6; // Circular buffer cache size
+        this.maxCacheSize = 6; // Default circular buffer cache size (6 for full res, 12 for downsampled)
         this.maxMemoryMB = 500; // Max memory usage in MB
         this.preloadAbortControllers = new Map(); // Track preload operations
         this.networkQuality = 'good'; // Track network performance
@@ -48,6 +49,8 @@ class ImageViewer {
     init() {
         this.setupElements();
         this.setupEventListeners();
+        this.updateResolutionStatus(); // Initialize resolution status display
+        this.updateMaxZoom(); // Initialize zoom limits based on current resolution
         this.loadDatasets();
         
         // Setup performance monitoring
@@ -239,6 +242,8 @@ class ImageViewer {
         this.performanceIndicator = document.getElementById('performanceIndicator');
         this.networkQualityDot = this.performanceIndicator.querySelector('.network-quality');
         this.metricsText = this.performanceIndicator.querySelector('.metrics-text');
+        this.resolutionToggle = document.getElementById('resolutionToggle');
+        this.resolutionStatus = document.getElementById('resolutionStatus');
         
         // Add error handling to main image element
         this.image.addEventListener('error', (e) => {
@@ -289,6 +294,14 @@ class ImageViewer {
             this.loadCurrentImage();
         });
         
+        this.resolutionToggle.addEventListener('change', (e) => {
+            this.useFullResolution = e.target.checked;
+            this.updateCacheSize();
+            this.updateResolutionStatus();
+            this.updateMaxZoom(); // Update zoom limits based on resolution
+            this.loadCurrentImage();
+        });
+        
         // Mouse events
         this.viewer.addEventListener('mousedown', (e) => this.startDrag(e));
         this.viewer.addEventListener('mousemove', (e) => this.drag(e));
@@ -333,6 +346,64 @@ class ImageViewer {
         });
     }
     
+    updateCacheSize() {
+        // Adaptive cache sizing: 12 images for downsampled (smaller files), 6 for full resolution
+        const newCacheSize = this.useFullResolution ? 6 : 12;
+        
+        // If we're reducing cache size, evict excess images
+        if (newCacheSize < this.maxCacheSize) {
+            while (this.imageCache.size > newCacheSize && this.cacheOrder.length > 0) {
+                const oldestUrl = this.cacheOrder.shift();
+                const entry = this.imageCache.get(oldestUrl);
+                if (entry) {
+                    // Clean up blob URLs
+                    if (entry.metadata?.blobUrl) {
+                        URL.revokeObjectURL(entry.metadata.blobUrl);
+                    }
+                    if (entry.image?.src?.startsWith('blob:')) {
+                        URL.revokeObjectURL(entry.image.src);
+                    }
+                    this.imageCache.delete(oldestUrl);
+                }
+            }
+            console.log(`Cache size reduced to ${newCacheSize}, evicted ${this.maxCacheSize - newCacheSize} images`);
+        }
+        
+        this.maxCacheSize = newCacheSize;
+        console.log(`Cache size updated: ${this.maxCacheSize} images (${this.useFullResolution ? 'Full' : 'Downsampled'} resolution)`);
+    }
+    
+    updateResolutionStatus() {
+        const status = this.useFullResolution ? 'Full Resolution' : 'Downsampled (2x)';
+        this.resolutionStatus.textContent = status;
+        this.resolutionStatus.className = `resolution-status ${this.useFullResolution ? 'full' : 'downsampled'}`;
+    }
+    
+    updateMaxZoom() {
+        // Adaptive max zoom based on resolution
+        // Full resolution images get higher max zoom for detailed inspection
+        // Downsampled images get lower max zoom since they have less detail
+        this.maxScale = this.useFullResolution ? 20 : 10;
+        
+        // If current scale exceeds new max, clamp it
+        if (this.scale > this.maxScale) {
+            this.scale = this.maxScale;
+            this.updateTransform();
+        }
+    }
+    
+    getImageUrl(imageUrls) {
+        // Handle both new nested format and legacy single URL format
+        if (typeof imageUrls === 'string') {
+            // Legacy format - single URL
+            return imageUrls;
+        } else if (typeof imageUrls === 'object' && imageUrls !== null) {
+            // New format - nested URLs
+            return this.useFullResolution ? imageUrls.full : imageUrls.downsampled;
+        }
+        return null;
+    }
+    
     async loadDatasets() {
         try {
             this.statusText.textContent = 'Loading datasets...';
@@ -366,13 +437,13 @@ class ImageViewer {
         
         switch(this.currentImageType) {
             case 'pre':
-                imageUrl = dataset.preEvent;
+                imageUrl = this.getImageUrl(dataset.preEvent);
                 break;
             case 'post':
-                imageUrl = dataset.postEvent;
+                imageUrl = this.getImageUrl(dataset.postEvent);
                 break;
             case 'change':
-                imageUrl = dataset.changeDetection;
+                imageUrl = dataset.changeDetection; // Change detection is always single URL
                 break;
         }
         
@@ -597,12 +668,13 @@ class ImageViewer {
     }
     
     updateLoadingProgress(progress, eta, speed, total) {
-        this.statusText.textContent = `Loading image... ${progress}%`;
+        const resolutionMode = this.useFullResolution ? 'Full' : '2x Downsampled';
+        this.statusText.textContent = `Loading image... ${progress}% (${resolutionMode})`;
         this.progressBarFill.style.width = `${progress}%`;
         
         // Update loading text with enhanced info
         const loadingText = this.loadingIndicator.querySelector('.loading-text');
-        let loadingMessage = `Loading image... ${progress}%`;
+        let loadingMessage = `Loading ${resolutionMode} image... ${progress}%`;
         
         if (eta && eta < 30) {
             loadingMessage += ` (${Math.ceil(eta)}s remaining)`;
@@ -616,6 +688,15 @@ class ImageViewer {
             }
             if (totalMB > 1) {
                 loadingMessage += ` • ${totalMB.toFixed(1)} MB`;
+                
+                // Show estimated savings for downsampled images
+                if (!this.useFullResolution) {
+                    const estimatedFullSizeMB = totalMB * 4; // Rough estimate: 4x larger for full resolution
+                    const savingsMB = estimatedFullSizeMB - totalMB;
+                    if (savingsMB > 1) {
+                        loadingMessage += ` (saves ~${savingsMB.toFixed(1)} MB)`;
+                    }
+                }
             }
         }
         
@@ -740,17 +821,16 @@ class ImageViewer {
             }
         }
         
-        // Update status with performance info
+        // Update status with performance info including resolution mode
         const cacheHitRate = this.cacheMetrics.hits / (this.cacheMetrics.hits + this.cacheMetrics.misses) * 100;
-        this.statusText.textContent = `Loaded: ${this.currentImageType}-event image (Cache: ${cacheHitRate.toFixed(1)}%)`;
+        const resolutionMode = this.useFullResolution ? 'Full' : '2x Downsampled';
+        this.statusText.textContent = `Loaded: ${this.currentImageType}-event image (${resolutionMode}, Cache: ${cacheHitRate.toFixed(1)}%)`;
         
-        // Only fit to view if this is the first image load (scale is 1 and no translation)
-        if (this.scale === 1 && this.translateX === 0 && this.translateY === 0) {
+        // Always fit to view when loading a new image
+        // Use a small delay to ensure the image is fully rendered
+        setTimeout(() => {
             this.fitToView();
-        } else {
-            // Maintain current zoom and pan
-            this.updateTransform();
-        }
+        }, 10);
     }
     
     updatePerformanceMetrics() {
@@ -783,8 +863,9 @@ class ImageViewer {
         // Update network quality indicator
         this.networkQualityDot.className = `network-quality ${this.networkQuality}`;
         
-        // Update metrics text
-        this.metricsText.textContent = `Cache: ${cacheHitRate}% | Mem: ${memoryUsageMB}MB | ${this.imageCache.size} imgs`;
+        // Update metrics text with resolution mode
+        const resMode = this.useFullResolution ? 'Full' : '2x';
+        this.metricsText.textContent = `Cache: ${cacheHitRate}% | Mem: ${memoryUsageMB}MB | ${this.imageCache.size}/${this.maxCacheSize} (${resMode})`;
         
         // Show indicator during loading or if performance is poor
         const shouldShow = this.isLoading || 
@@ -814,23 +895,29 @@ class ImageViewer {
         const prevIndex = (this.currentDatasetIndex - 1 + this.datasets.length) % this.datasets.length;
         
         // Priority 1: Current dataset's other image types (highest priority)
-        this.addToPreloadQueue(currentDataset.preEvent, 1, 'current-pre');
-        this.addToPreloadQueue(currentDataset.postEvent, 1, 'current-post');
-        this.addToPreloadQueue(currentDataset.changeDetection, 1, 'current-change');
+        this.addToPreloadQueue(this.getImageUrl(currentDataset.preEvent), 1, 'current-pre');
+        this.addToPreloadQueue(this.getImageUrl(currentDataset.postEvent), 1, 'current-post');
+        this.addToPreloadQueue(currentDataset.changeDetection, 1, 'current-change'); // Change detection is single URL
         
         // Priority 2: Next dataset's current image type (navigation prediction)
         const nextDataset = this.datasets[nextIndex];
         const nextImageProperty = this.getImageProperty(this.currentImageType);
-        this.addToPreloadQueue(nextDataset[nextImageProperty], 2, 'next-current');
+        const nextImageUrl = nextImageProperty === 'changeDetection' ? 
+            nextDataset[nextImageProperty] : 
+            this.getImageUrl(nextDataset[nextImageProperty]);
+        this.addToPreloadQueue(nextImageUrl, 2, 'next-current');
         
         // Priority 3: Previous dataset's current image type
         const prevDataset = this.datasets[prevIndex];
-        this.addToPreloadQueue(prevDataset[nextImageProperty], 3, 'prev-current');
+        const prevImageUrl = nextImageProperty === 'changeDetection' ? 
+            prevDataset[nextImageProperty] : 
+            this.getImageUrl(prevDataset[nextImageProperty]);
+        this.addToPreloadQueue(prevImageUrl, 3, 'prev-current');
         
         // Priority 4: Next dataset's other image types
         if (this.networkQuality === 'good') {
-            this.addToPreloadQueue(nextDataset.preEvent, 4, 'next-pre');
-            this.addToPreloadQueue(nextDataset.postEvent, 4, 'next-post');
+            this.addToPreloadQueue(this.getImageUrl(nextDataset.preEvent), 4, 'next-pre');
+            this.addToPreloadQueue(this.getImageUrl(nextDataset.postEvent), 4, 'next-post');
             this.addToPreloadQueue(nextDataset.changeDetection, 4, 'next-change');
         }
         
@@ -842,8 +929,15 @@ class ImageViewer {
             const nextNextDataset = this.datasets[nextNextIndex];
             const prevPrevDataset = this.datasets[prevPrevIndex];
             
-            this.addToPreloadQueue(nextNextDataset[nextImageProperty], 5, 'next-next');
-            this.addToPreloadQueue(prevPrevDataset[nextImageProperty], 5, 'prev-prev');
+            const nextNextImageUrl = nextImageProperty === 'changeDetection' ? 
+                nextNextDataset[nextImageProperty] : 
+                this.getImageUrl(nextNextDataset[nextImageProperty]);
+            const prevPrevImageUrl = nextImageProperty === 'changeDetection' ? 
+                prevPrevDataset[nextImageProperty] : 
+                this.getImageUrl(prevPrevDataset[nextImageProperty]);
+            
+            this.addToPreloadQueue(nextNextImageUrl, 5, 'next-next');
+            this.addToPreloadQueue(prevPrevImageUrl, 5, 'prev-prev');
         }
         
         // Execute preloading with priority order
@@ -1153,14 +1247,14 @@ class ImageViewer {
         const prevIndex = (this.currentDatasetIndex - 1 + this.datasets.length) % this.datasets.length;
         
         const relevantUrls = new Set([
-            currentDataset.preEvent,
-            currentDataset.postEvent,
+            this.getImageUrl(currentDataset.preEvent),
+            this.getImageUrl(currentDataset.postEvent),
             currentDataset.changeDetection,
-            this.datasets[nextIndex]?.preEvent,
-            this.datasets[nextIndex]?.postEvent,
+            this.getImageUrl(this.datasets[nextIndex]?.preEvent),
+            this.getImageUrl(this.datasets[nextIndex]?.postEvent),
             this.datasets[nextIndex]?.changeDetection,
-            this.datasets[prevIndex]?.preEvent,
-            this.datasets[prevIndex]?.postEvent,
+            this.getImageUrl(this.datasets[prevIndex]?.preEvent),
+            this.getImageUrl(this.datasets[prevIndex]?.postEvent),
             this.datasets[prevIndex]?.changeDetection
         ].filter(Boolean));
         
@@ -1230,13 +1324,34 @@ class ImageViewer {
     
     fitToView() {
         const viewerRect = this.viewer.getBoundingClientRect();
-        const imgWidth = this.image.naturalWidth;
-        const imgHeight = this.image.naturalHeight;
+        const imgWidth = this.image.naturalWidth || this.image.width;
+        const imgHeight = this.image.naturalHeight || this.image.height;
+        
+        // Ensure we have valid dimensions
+        if (!imgWidth || !imgHeight || !viewerRect.width || !viewerRect.height) {
+            console.warn('Cannot fit to view: invalid dimensions', {
+                imgWidth, imgHeight, 
+                viewerWidth: viewerRect.width, 
+                viewerHeight: viewerRect.height
+            });
+            return;
+        }
         
         const scaleX = viewerRect.width / imgWidth;
         const scaleY = viewerRect.height / imgHeight;
         
-        this.scale = Math.min(scaleX, scaleY) * 0.95; // 95% to add some padding
+        // Use full scale to fill the available space appropriately
+        // For downsampled images, we want them to appear the same size as full resolution
+        // So we need to account for the 2x downsample factor
+        let baseScale = Math.min(scaleX, scaleY);
+        
+        // If using downsampled resolution, scale up by 2x to match full resolution display size
+        // This ensures both resolutions appear at the same initial size
+        if (!this.useFullResolution) {
+            baseScale *= 2;
+        }
+        
+        this.scale = baseScale;
         this.translateX = 0;
         this.translateY = 0;
         this.updateTransform();
