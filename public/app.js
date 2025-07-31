@@ -69,6 +69,9 @@ class ImageViewer {
         // Setup performance monitoring
         this.setupPerformanceMonitoring();
         
+        // Create panorama grid overlay
+        this.createPanoramaGridOverlay();
+        
         // Setup cleanup on page unload
         window.addEventListener('beforeunload', () => this.cleanup());
         
@@ -492,6 +495,12 @@ class ImageViewer {
         this.viewer.addEventListener('touchstart', (e) => this.handleTouchStart(e));
         this.viewer.addEventListener('touchmove', (e) => this.handleTouchMove(e));
         this.viewer.addEventListener('touchend', (e) => this.handleTouchEnd(e));
+        
+        // Panorama click event for image pair selection
+        this.panoramaImageElement.addEventListener('click', (e) => this.handlePanoramaClick(e));
+        
+        // Add mouseover effect to show available areas
+        this.panoramaImageElement.addEventListener('mousemove', (e) => this.handlePanoramaMouseMove(e));
         
         this.viewer.addEventListener('wheel', (e) => {
             e.preventDefault();
@@ -1773,6 +1782,308 @@ class ImageViewer {
             this.startX = touch.clientX - this.translateX;
             this.startY = touch.clientY - this.translateY;
             this.lastTouchDistance = 0;
+        }
+    }
+    
+    handlePanoramaClick(e) {
+        e.preventDefault();
+        
+        if (!this.boxMappings.length) {
+            console.warn('Box mappings not loaded yet');
+            return;
+        }
+        
+        // Get click coordinates relative to the panorama image
+        const rect = this.panoramaImageElement.getBoundingClientRect();
+        const clickX = e.clientX - rect.left;
+        const clickY = e.clientY - rect.top;
+        
+        // Convert to panorama coordinates (accounting for scaling)
+        const scaleX = this.panoramaImage.width / rect.width;
+        const scaleY = this.panoramaImage.height / rect.height;
+        
+        const panoramaX = clickX * scaleX;
+        const panoramaY = clickY * scaleY;
+        
+        console.log(`Panorama click at: (${panoramaX.toFixed(1)}, ${panoramaY.toFixed(1)})`);
+        
+        // Find the closest image pair
+        const closestMapping = this.findClosestImagePair(panoramaX, panoramaY);
+        
+        if (closestMapping) {
+            console.log(`Closest image pair: ${closestMapping.numero} at (${closestMapping.x}, ${closestMapping.y})`);
+            this.selectImagePair(closestMapping.numero);
+        }
+    }
+    
+    findClosestImagePair(x, y) {
+        if (!this.boxMappings.length) return null;
+        
+        // First, try to find if click is within any box boundary
+        let directMapping = this.findDirectBoxMapping(x, y);
+        if (directMapping) {
+            console.log(`Direct hit in box for image: ${directMapping.numero}`);
+            return directMapping;
+        }
+        
+        // If not in any box, find the closest box center
+        let closestMapping = null;
+        let minDistance = Infinity;
+        
+        for (const mapping of this.boxMappings) {
+            // Calculate Euclidean distance from click point to box center
+            const distance = Math.sqrt(
+                Math.pow(x - mapping.x, 2) + Math.pow(y - mapping.y, 2)
+            );
+            
+            if (distance < minDistance) {
+                minDistance = distance;
+                closestMapping = mapping;
+            }
+        }
+        
+        console.log(`Found closest mapping at distance: ${minDistance.toFixed(1)}px`);
+        return closestMapping;
+    }
+    
+    findDirectBoxMapping(x, y) {
+        // Check if click is within any box boundaries
+        for (const mapping of this.boxMappings) {
+            const boxLeft = mapping.x - this.boxDimensions.width / 2;
+            const boxRight = mapping.x + this.boxDimensions.width / 2;
+            const boxTop = mapping.y - this.boxDimensions.height / 2;
+            const boxBottom = mapping.y + this.boxDimensions.height / 2;
+            
+            if (x >= boxLeft && x <= boxRight && y >= boxTop && y <= boxBottom) {
+                return mapping;
+            }
+        }
+        return null;
+    }
+    
+    selectImagePair(imageNumber) {
+        // Find the dataset index that corresponds to this image number
+        const datasetIndex = this.datasets.findIndex(dataset => 
+            parseInt(dataset.id) === imageNumber
+        );
+        
+        if (datasetIndex !== -1 && datasetIndex !== this.currentDatasetIndex) {
+            console.log(`Switching to image pair ${imageNumber} (dataset index ${datasetIndex})`);
+            
+            // Update current dataset index
+            this.currentDatasetIndex = datasetIndex;
+            
+            // Update UI elements
+            this.datasetSelect.value = this.currentDatasetIndex;
+            this.updateDatasetCounter();
+            
+            // Check vegetation filter availability for new dataset
+            this.checkVegetationFilterAvailability();
+            
+            // Load the new image (keeping current zoom/pan state)
+            this.loadCurrentImage();
+            
+            // Visual feedback - briefly highlight the selected area
+            this.highlightSelectedArea(imageNumber);
+        } else if (datasetIndex === this.currentDatasetIndex) {
+            console.log(`Already viewing image pair ${imageNumber}`);
+            // Still provide visual feedback
+            this.highlightSelectedArea(imageNumber);
+        } else {
+            console.warn(`Image pair ${imageNumber} not found in datasets`);
+        }
+    }
+    
+    highlightSelectedArea(imageNumber) {
+        // Find the mapping for the selected image
+        const mapping = this.boxMappings.find(m => m.numero === imageNumber);
+        if (!mapping) return;
+        
+        // Create temporary highlight effect
+        const highlight = document.createElement('div');
+        highlight.style.cssText = `
+            position: absolute;
+            border: 3px solid #00ff00;
+            background: rgba(0, 255, 0, 0.2);
+            pointer-events: none;
+            border-radius: 4px;
+            z-index: 1000;
+            animation: pulse 0.8s ease-in-out;
+        `;
+        
+        // Calculate position and size relative to panorama container
+        const panoramaRect = this.panoramaImageElement.getBoundingClientRect();
+        const scaleX = panoramaRect.width / this.panoramaImage.width;
+        const scaleY = panoramaRect.height / this.panoramaImage.height;
+        
+        const boxLeft = (mapping.x - this.boxDimensions.width / 2) * scaleX;
+        const boxTop = (mapping.y - this.boxDimensions.height / 2) * scaleY;
+        const boxWidth = this.boxDimensions.width * scaleX;
+        const boxHeight = this.boxDimensions.height * scaleY;
+        
+        highlight.style.left = `${boxLeft}px`;
+        highlight.style.top = `${boxTop}px`;
+        highlight.style.width = `${boxWidth}px`;
+        highlight.style.height = `${boxHeight}px`;
+        
+        // Add to panorama container
+        const panoramaContainer = document.querySelector('.panorama-container');
+        panoramaContainer.appendChild(highlight);
+        
+        // Remove after animation
+        setTimeout(() => {
+            if (highlight.parentNode) {
+                highlight.parentNode.removeChild(highlight);
+            }
+        }, 800);
+    }
+    
+    createPanoramaGridOverlay() {
+        // Create a canvas overlay to show available click areas
+        this.gridOverlay = document.createElement('canvas');
+        this.gridOverlay.className = 'panorama-grid-overlay';
+        this.gridOverlay.style.cssText = `
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            z-index: 1;
+        `;
+        
+        const panoramaContainer = document.querySelector('.panorama-container');
+        panoramaContainer.appendChild(this.gridOverlay);
+        
+        // Set up canvas for grid drawing
+        this.updateGridOverlay();
+        
+        // Show/hide grid on hover
+        this.panoramaImageElement.addEventListener('mouseenter', () => {
+            this.gridOverlay.style.opacity = '0.6';
+        });
+        
+        this.panoramaImageElement.addEventListener('mouseleave', () => {
+            this.gridOverlay.style.opacity = '0';
+            this.clearHoverHighlight();
+        });
+        
+        // Update grid on window resize
+        window.addEventListener('resize', () => {
+            clearTimeout(this.gridResizeTimeout);
+            this.gridResizeTimeout = setTimeout(() => {
+                this.updateGridOverlay();
+            }, 100);
+        });
+    }
+    
+    updateGridOverlay() {
+        if (!this.gridOverlay || !this.boxMappings.length) return;
+        
+        const panoramaRect = this.panoramaImageElement.getBoundingClientRect();
+        const containerRect = document.querySelector('.panorama-container').getBoundingClientRect();
+        
+        // Set canvas size to match container
+        this.gridOverlay.width = containerRect.width;
+        this.gridOverlay.height = containerRect.height;
+        
+        const ctx = this.gridOverlay.getContext('2d');
+        ctx.clearRect(0, 0, this.gridOverlay.width, this.gridOverlay.height);
+        
+        // Calculate scaling factors
+        const scaleX = panoramaRect.width / this.panoramaImage.width;
+        const scaleY = panoramaRect.height / this.panoramaImage.height;
+        
+        // Draw subtle grid boxes for available areas
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([2, 2]);
+        
+        for (const mapping of this.boxMappings) {
+            const boxLeft = (mapping.x - this.boxDimensions.width / 2) * scaleX;
+            const boxTop = (mapping.y - this.boxDimensions.height / 2) * scaleY;
+            const boxWidth = this.boxDimensions.width * scaleX;
+            const boxHeight = this.boxDimensions.height * scaleY;
+            
+            ctx.strokeRect(boxLeft, boxTop, boxWidth, boxHeight);
+            
+            // Add small dot at center
+            ctx.save();
+            ctx.setLineDash([]);
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+            ctx.beginPath();
+            ctx.arc(mapping.x * scaleX, mapping.y * scaleY, 1, 0, 2 * Math.PI);
+            ctx.fill();
+            ctx.restore();
+        }
+    }
+    
+    handlePanoramaMouseMove(e) {
+        if (!this.boxMappings.length) return;
+        
+        // Get hover coordinates
+        const rect = this.panoramaImageElement.getBoundingClientRect();
+        const hoverX = e.clientX - rect.left;
+        const hoverY = e.clientY - rect.top;
+        
+        // Convert to panorama coordinates
+        const scaleX = this.panoramaImage.width / rect.width;
+        const scaleY = this.panoramaImage.height / rect.height;
+        
+        const panoramaX = hoverX * scaleX;
+        const panoramaY = hoverY * scaleY;
+        
+        // Find what would be selected
+        const closestMapping = this.findClosestImagePair(panoramaX, panoramaY);
+        
+        if (closestMapping) {
+            this.showHoverHighlight(closestMapping);
+        }
+    }
+    
+    showHoverHighlight(mapping) {
+        this.clearHoverHighlight();
+        
+        // Create hover highlight
+        this.hoverHighlight = document.createElement('div');
+        this.hoverHighlight.style.cssText = `
+            position: absolute;
+            border: 2px solid rgba(0, 255, 0, 0.8);
+            background: rgba(0, 255, 0, 0.1);
+            pointer-events: none;
+            border-radius: 3px;
+            z-index: 2;
+            transition: all 0.1s ease;
+        `;
+        
+        // Calculate position and size
+        const panoramaRect = this.panoramaImageElement.getBoundingClientRect();
+        const scaleX = panoramaRect.width / this.panoramaImage.width;
+        const scaleY = panoramaRect.height / this.panoramaImage.height;
+        
+        const boxLeft = (mapping.x - this.boxDimensions.width / 2) * scaleX;
+        const boxTop = (mapping.y - this.boxDimensions.height / 2) * scaleY;
+        const boxWidth = this.boxDimensions.width * scaleX;
+        const boxHeight = this.boxDimensions.height * scaleY;
+        
+        this.hoverHighlight.style.left = `${boxLeft}px`;
+        this.hoverHighlight.style.top = `${boxTop}px`;
+        this.hoverHighlight.style.width = `${boxWidth}px`;
+        this.hoverHighlight.style.height = `${boxHeight}px`;
+        
+        // Add tooltip showing image number
+        this.hoverHighlight.title = `Image pair ${mapping.numero}`;
+        
+        const panoramaContainer = document.querySelector('.panorama-container');
+        panoramaContainer.appendChild(this.hoverHighlight);
+    }
+    
+    clearHoverHighlight() {
+        if (this.hoverHighlight && this.hoverHighlight.parentNode) {
+            this.hoverHighlight.parentNode.removeChild(this.hoverHighlight);
+            this.hoverHighlight = null;
         }
     }
 }
