@@ -46,16 +46,26 @@ const getMimeType = (filename) => {
   return mimeTypes[ext] || 'application/octet-stream';
 };
 
-// Helper function to generate both full and downsampled image URLs
-const generateImageUrls = (basePath, filename) => {
+// Helper function to generate both full and downsampled image URLs with vegetation filter support
+const generateImageUrls = (basePath, filename, hasVegFilter = false) => {
   const ext = path.extname(filename);
   const base = path.basename(filename, ext);
   const downsampledFilename = `${base}_2x${ext}`;
   
-  return {
+  const urls = {
     full: `/api/image/${basePath}/${filename}`,
     downsampled: `/api/image/${basePath}/${downsampledFilename}`
   };
+  
+  // Add vegetation filter variants if available
+  if (hasVegFilter) {
+    urls.vegFilter = {
+      full: `/api/image/${basePath}/no_veg_filter/${filename}`,
+      downsampled: `/api/image/${basePath}/no_veg_filter/${downsampledFilename}`
+    };
+  }
+  
+  return urls;
 };
 
 // Helper function to check if downsampled version exists
@@ -68,6 +78,23 @@ const hasDownsampledVersion = (fullPath) => {
   const downsampledPath = path.join(dir, downsampledFilename);
   
   return fs.existsSync(downsampledPath);
+};
+
+// Helper function to check if vegetation filter version exists
+const hasVegetationFilter = (basePath, filename) => {
+  const vegFilterDir = path.join(__dirname, basePath, 'no_veg_filter');
+  if (!fs.existsSync(vegFilterDir)) {
+    return false;
+  }
+  
+  const vegFilterFile = path.join(vegFilterDir, filename);
+  return fs.existsSync(vegFilterFile);
+};
+
+// Helper function to detect if a dataset folder has vegetation filter variants
+const detectVegetationFilterSupport = (folderPath) => {
+  const vegFilterPath = path.join(folderPath, 'no_veg_filter');
+  return fs.existsSync(vegFilterPath) && fs.statSync(vegFilterPath).isDirectory();
 };
 
 // Add progressive JPEG hint for browsers
@@ -243,18 +270,28 @@ app.get('/api/datasets/:project', requireAuth, (req, res) => {
           if (imageFiles.length >= 2) {
             const sortedImages = imageFiles.filter(f => !f.startsWith('SSI_')).sort();
             
+            // Check if this dataset has vegetation filter support
+            const hasVegFilterSupport = detectVegetationFilterSupport(folderPath);
+            
+            // Check if SSI file has vegetation filter variant
+            const ssiHasVegFilter = ssiFile ? hasVegetationFilter(`analysis/${folder}`, ssiFile) : false;
+            
             // Generate URLs for both full and downsampled versions
             const preEventUrls = generateImageUrls(`analysis/${folder}`, sortedImages[0]);
             const postEventUrls = generateImageUrls(`analysis/${folder}`, sortedImages[1]);
             
-            // Generate change detection URLs for both resolutions
-            const changeDetectionUrls = ssiFile ? generateImageUrls(`analysis/${folder}`, ssiFile) : null;
+            // Generate change detection URLs with vegetation filter support
+            const changeDetectionUrls = ssiFile ? generateImageUrls(`analysis/${folder}`, ssiFile, ssiHasVegFilter) : null;
             
             datasets.push({
               id: folder,
               preEvent: preEventUrls,
               postEvent: postEventUrls,
-              changeDetection: changeDetectionUrls
+              changeDetection: changeDetectionUrls,
+              hasVegetationFilter: hasVegFilterSupport,
+              vegetationFilterAvailable: {
+                changeDetection: ssiHasVegFilter
+              }
             });
           }
         });
@@ -325,6 +362,44 @@ app.get('/api/image/:folder/:subfolder/:filename', requireAuth, async (req, res)
   
   const imagePath = path.join(folder, subfolder, actualFilename);
   await serveOptimizedImage(req, res, imagePath);
+});
+
+// Route for vegetation filter images (no_veg_filter subdirectory)
+app.get('/api/image/:folder/:subfolder/no_veg_filter/:filename', requireAuth, async (req, res) => {
+  const { folder, subfolder, filename } = req.params;
+  const { resolution } = req.query;
+  
+  let actualFilename = filename;
+  
+  // If downsampled version is requested, modify filename
+  if (resolution === 'downsampled' || resolution === '2x') {
+    const ext = path.extname(filename);
+    const base = path.basename(filename, ext);
+    
+    // Check if it already has _2x suffix (direct access)
+    if (!base.endsWith('_2x')) {
+      actualFilename = `${base}_2x${ext}`;
+    }
+  }
+  
+  const imagePath = path.join(folder, subfolder, 'no_veg_filter', actualFilename);
+  
+  // Check if the vegetation filter version exists, fallback to normal version if not
+  const fullVegFilterPath = path.resolve(__dirname, imagePath);
+  const normalImagePath = path.join(folder, subfolder, actualFilename);
+  
+  try {
+    await fs.promises.access(fullVegFilterPath);
+    await serveOptimizedImage(req, res, imagePath);
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      console.warn(`Vegetation filter image not found: ${imagePath}, falling back to normal version`);
+      await serveOptimizedImage(req, res, normalImagePath);
+    } else {
+      console.error('Error accessing vegetation filter image:', error);
+      res.status(500).json({ error: 'Failed to access image' });
+    }
+  }
 });
 
 // Route for co-registered images in results folder (enhanced with resolution support)

@@ -5,6 +5,8 @@ class ImageViewer {
         this.currentImageType = 'pre';
         this.currentProject = 'analysis';
         this.useFullResolution = false; // Default to downsampled resolution
+        this.useVegetationFilter = false; // Default to normal (no vegetation filter)
+        this.vegetationFilterAvailable = false; // Track if current dataset supports vegetation filtering
         this.scale = 1;
         this.minScale = 0.1;
         this.maxScale = 10; // Will be updated dynamically based on resolution
@@ -54,6 +56,7 @@ class ImageViewer {
         this.setupElements();
         this.setupEventListeners();
         this.updateResolutionStatus(); // Initialize resolution status display
+        this.updateVegetationStatus(); // Initialize vegetation filter status display
         this.updateMaxZoom(); // Initialize zoom limits based on current resolution
         this.loadDatasets();
         
@@ -123,8 +126,8 @@ class ImageViewer {
         // Reduce cache size more aggressively with circular buffer
         const targetSize = Math.floor(this.maxCacheSize * 0.5);
         while (this.imageCache.size > targetSize && this.cacheOrder.length > 0) {
-            const oldestUrl = this.cacheOrder.shift();
-            const entry = this.imageCache.get(oldestUrl);
+            const oldestKey = this.cacheOrder.shift();
+            const entry = this.imageCache.get(oldestKey);
             if (entry) {
                 // Clean up blob URLs
                 if (entry.metadata?.blobUrl) {
@@ -133,7 +136,7 @@ class ImageViewer {
                 if (entry.image?.src?.startsWith('blob:')) {
                     URL.revokeObjectURL(entry.image.src);
                 }
-                this.imageCache.delete(oldestUrl);
+                this.imageCache.delete(oldestKey);
             }
         }
         
@@ -214,7 +217,7 @@ class ImageViewer {
         }
         
         // Clean up blob URLs before clearing cache
-        for (const [url, entry] of this.imageCache) {
+        for (const [cacheKey, entry] of this.imageCache) {
             if (entry.metadata?.blobUrl) {
                 URL.revokeObjectURL(entry.metadata.blobUrl);
             }
@@ -248,6 +251,9 @@ class ImageViewer {
         this.metricsText = this.performanceIndicator.querySelector('.metrics-text');
         this.resolutionToggle = document.getElementById('resolutionToggle');
         this.resolutionStatus = document.getElementById('resolutionStatus');
+        this.vegetationToggle = document.getElementById('vegetationToggle');
+        this.vegetationStatus = document.getElementById('vegetationStatus');
+        this.vegetationControls = document.querySelector('.vegetation-controls');
         
         // Add error handling to main image element
         this.image.addEventListener('error', (e) => {
@@ -294,6 +300,8 @@ class ImageViewer {
         
         this.datasetSelect.addEventListener('change', (e) => {
             this.currentDatasetIndex = parseInt(e.target.value);
+            // Check vegetation filter availability for new dataset
+            this.checkVegetationFilterAvailability();
             // Reset view when changing datasets via dropdown (user expects fresh view when jumping)
             this.resetView();
             this.loadCurrentImage();
@@ -305,6 +313,13 @@ class ImageViewer {
             this.updateResolutionStatus();
             this.updateMaxZoom(); // Update zoom limits based on resolution
             this.wasResolutionChanged = true; // Mark that resolution was changed
+            this.loadCurrentImage();
+        });
+        
+        this.vegetationToggle.addEventListener('change', (e) => {
+            this.useVegetationFilter = e.target.checked;
+            this.updateVegetationStatus();
+            this.updateCacheSize(); // Vegetation filter affects cache organization
             this.loadCurrentImage();
         });
         
@@ -359,8 +374,8 @@ class ImageViewer {
         // If we're reducing cache size, evict excess images
         if (newCacheSize < this.maxCacheSize) {
             while (this.imageCache.size > newCacheSize && this.cacheOrder.length > 0) {
-                const oldestUrl = this.cacheOrder.shift();
-                const entry = this.imageCache.get(oldestUrl);
+                const oldestKey = this.cacheOrder.shift();
+                const entry = this.imageCache.get(oldestKey);
                 if (entry) {
                     // Clean up blob URLs
                     if (entry.metadata?.blobUrl) {
@@ -369,7 +384,7 @@ class ImageViewer {
                     if (entry.image?.src?.startsWith('blob:')) {
                         URL.revokeObjectURL(entry.image.src);
                     }
-                    this.imageCache.delete(oldestUrl);
+                    this.imageCache.delete(oldestKey);
                 }
             }
             console.log(`Cache size reduced to ${newCacheSize}, evicted ${this.maxCacheSize - newCacheSize} images`);
@@ -385,6 +400,74 @@ class ImageViewer {
         this.resolutionStatus.className = `resolution-status ${this.useFullResolution ? 'full' : 'downsampled'}`;
     }
     
+    updateVegetationStatus() {
+        if (!this.vegetationFilterAvailable) {
+            this.vegetationStatus.textContent = 'Unavailable';
+            this.vegetationStatus.className = 'vegetation-status unavailable';
+            return;
+        }
+        
+        const status = this.useVegetationFilter ? 'Active' : 'Inactive';
+        this.vegetationStatus.textContent = status;
+        this.vegetationStatus.className = `vegetation-status ${this.useVegetationFilter ? 'active' : 'inactive'}`;
+    }
+    
+    checkVegetationFilterAvailability() {
+        // Check if current dataset has vegetation filter support
+        this.vegetationFilterAvailable = false;
+        
+        if (this.datasets.length > 0 && this.currentDatasetIndex < this.datasets.length) {
+            const dataset = this.datasets[this.currentDatasetIndex];
+            
+            // Use the backend's hasVegetationFilter flag if available
+            if (dataset.hasVegetationFilter) {
+                this.vegetationFilterAvailable = true;
+            } else {
+                // Fallback: check if any image type has vegetation filter structure
+                const imageTypes = ['preEvent', 'postEvent', 'changeDetection'];
+                for (const imageType of imageTypes) {
+                    const imageUrls = dataset[imageType];
+                    if (this.hasVegetationFilterStructure(imageUrls)) {
+                        this.vegetationFilterAvailable = true;
+                        break;
+                    }
+                }
+            }
+        }
+        
+        this.updateVegetationUI();
+    }
+    
+    hasVegetationFilterStructure(imageUrls) {
+        return typeof imageUrls === 'object' && 
+               imageUrls !== null && 
+               imageUrls.vegFilter && 
+               typeof imageUrls.vegFilter === 'object';
+    }
+    
+    updateVegetationUI() {
+        if (this.vegetationFilterAvailable) {
+            this.vegetationControls.classList.remove('vegetation-filter-unavailable');
+            this.vegetationToggle.disabled = false;
+        } else {
+            this.vegetationControls.classList.add('vegetation-filter-unavailable');
+            this.vegetationToggle.disabled = true;
+            this.vegetationToggle.checked = false;
+            this.useVegetationFilter = false;
+        }
+        
+        this.updateVegetationStatus();
+    }
+    
+    generateCacheKey(imageUrl) {
+        // Generate a unique cache key that includes resolution and vegetation filter state
+        // This ensures different variants of the same image are cached separately
+        const resolutionPrefix = this.useFullResolution ? 'full' : 'down';
+        // When toggle is inactive (false), we're showing vegetation filtered images
+        const filterPrefix = !this.useVegetationFilter && this.vegetationFilterAvailable ? 'veg' : 'norm';
+        return `${resolutionPrefix}-${filterPrefix}-${imageUrl}`;
+    }
+    
     updateMaxZoom() {
         // Use consistent max zoom for both resolutions to simplify behavior
         // Users can zoom as needed regardless of resolution
@@ -398,13 +481,27 @@ class ImageViewer {
     }
     
     getImageUrl(imageUrls) {
-        // Handle both new nested format and legacy single URL format
+        // Handle multiple formats: legacy single URL, dual-resolution format, and vegetation filter format
         if (typeof imageUrls === 'string') {
             // Legacy format - single URL
             return imageUrls;
         } else if (typeof imageUrls === 'object' && imageUrls !== null) {
-            // New format - nested URLs
-            return this.useFullResolution ? imageUrls.full : imageUrls.downsampled;
+            // Check if vegetation filter is requested and available
+            // When toggle is INACTIVE (false), show filtered images from no_veg_filter folder
+            if (!this.useVegetationFilter && imageUrls.vegFilter) {
+                // Use vegetation filter variant (from no_veg_filter folder)
+                const vegFilterUrls = imageUrls.vegFilter;
+                if (typeof vegFilterUrls === 'string') {
+                    return vegFilterUrls;
+                } else if (typeof vegFilterUrls === 'object' && vegFilterUrls !== null) {
+                    return this.useFullResolution ? vegFilterUrls.full : vegFilterUrls.downsampled;
+                }
+            }
+            
+            // Use normal (non-filtered) variant when toggle is active
+            if (imageUrls.full && imageUrls.downsampled) {
+                return this.useFullResolution ? imageUrls.full : imageUrls.downsampled;
+            }
         }
         return null;
     }
@@ -427,6 +524,11 @@ class ImageViewer {
             
             this.updateDatasetCounter();
             this.updateChangeDetectionButton();
+            // Ensure currentDatasetIndex is valid
+            if (this.currentDatasetIndex >= this.datasets.length) {
+                this.currentDatasetIndex = 0;
+            }
+            this.checkVegetationFilterAvailability();
             this.loadCurrentImage();
         } catch (error) {
             console.error('Error loading datasets:', error);
@@ -466,21 +568,24 @@ class ImageViewer {
             this.loadAbortController.abort();
         }
         
+        // Generate cache key that includes current state
+        const cacheKey = this.generateCacheKey(imageUrl);
+        
         // Check cache first with metrics tracking
-        if (this.imageCache.has(imageUrl)) {
+        if (this.imageCache.has(cacheKey)) {
             this.cacheMetrics.hits++;
-            const cachedEntry = this.imageCache.get(imageUrl);
+            const cachedEntry = this.imageCache.get(cacheKey);
             
             // Validate cached entry before using it
             if (this.validateCachedEntry(cachedEntry, imageUrl)) {
-                console.log('Using cached image:', imageUrl);
+                console.log('Using cached image:', imageUrl, 'with key:', cacheKey);
                 this.displayImage(cachedEntry, imageUrl);
                 this.intelligentPreload(); // Enhanced preloading
                 this.updatePerformanceMetrics();
                 return;
             } else {
                 console.warn('Cached entry is invalid, removing and reloading:', imageUrl);
-                this.imageCache.delete(imageUrl);
+                this.imageCache.delete(cacheKey);
                 // Continue to load the image fresh
             }
         }
@@ -496,12 +601,16 @@ class ImageViewer {
         }
         
         // Load with progress indication and error handling
-        await this.loadImageWithProgress(imageUrl);
+        await this.loadImageWithProgress(imageUrl, cacheKey);
         this.intelligentPreload(); // Enhanced preloading
         this.updatePerformanceMetrics();
     }
     
-    async loadImageWithProgress(imageUrl) {
+    async loadImageWithProgress(imageUrl, cacheKey = null) {
+        // Generate cache key if not provided
+        if (!cacheKey) {
+            cacheKey = this.generateCacheKey(imageUrl);
+        }
         const loadStartTime = Date.now();
         this.loadStartTimes.set(imageUrl, loadStartTime);
         
@@ -593,15 +702,16 @@ class ImageViewer {
                     img.dataset.originalUrl = imageUrl;
                     
                     // Cache the loaded image with metadata
-                    this.addToCache(imageUrl, img, {
+                    this.addToCache(cacheKey, img, {
                         priority: 1, // Main image has highest priority
                         context: 'main-load',
                         loadTime,
                         imageSize: total,
-                        blobUrl: imageObjectURL // Store blob URL for cleanup tracking
+                        blobUrl: imageObjectURL, // Store blob URL for cleanup tracking
+                        originalUrl: imageUrl // Store the original URL for reference
                     });
                     
-                    this.displayImage(this.imageCache.get(imageUrl), imageUrl);
+                    this.displayImage(this.imageCache.get(cacheKey), imageUrl);
                     
                     // Don't revoke the blob URL immediately - let the cache management handle it
                     // The blob URL will be cleaned up when the image is evicted from cache
@@ -628,7 +738,7 @@ class ImageViewer {
                 
                 // Enhanced retry with network-aware backoff
                 const retryDelay = this.calculateRetryDelay(1);
-                setTimeout(() => this.retryImageLoad(imageUrl, 1), retryDelay);
+                setTimeout(() => this.retryImageLoad(imageUrl, 1, cacheKey), retryDelay);
             }
         } finally {
             this.isLoading = false;
@@ -674,12 +784,14 @@ class ImageViewer {
     
     updateLoadingProgress(progress, eta, speed, total) {
         const resolutionMode = this.useFullResolution ? 'Full' : '2x Downsampled';
-        this.statusText.textContent = `Loading image... ${progress}% (${resolutionMode})`;
+        // Show "Automatic Vegetation Filter" only when toggle is active
+        const filterMode = this.vegetationFilterAvailable && this.useVegetationFilter ? ' - Automatic Vegetation Filter' : '';
+        this.statusText.textContent = `Loading image... ${progress}% (${resolutionMode}${filterMode})`;
         this.progressBarFill.style.width = `${progress}%`;
         
         // Update loading text with enhanced info
         const loadingText = this.loadingIndicator.querySelector('.loading-text');
-        let loadingMessage = `Loading ${resolutionMode} image... ${progress}%`;
+        let loadingMessage = `Loading ${resolutionMode}${filterMode} image... ${progress}%`;
         
         if (eta && eta < 30) {
             loadingMessage += ` (${Math.ceil(eta)}s remaining)`;
@@ -716,7 +828,11 @@ class ImageViewer {
         return Math.min(baseDelay * Math.pow(1.5, attempt - 1), 8000); // Max 8s delay
     }
     
-    async retryImageLoad(imageUrl, attempt) {
+    async retryImageLoad(imageUrl, attempt, cacheKey = null) {
+        // Generate cache key if not provided
+        if (!cacheKey) {
+            cacheKey = this.generateCacheKey(imageUrl);
+        }
         const maxAttempts = this.networkQuality === 'poor' ? 5 : 3;
         
         if (attempt > maxAttempts) {
@@ -730,11 +846,11 @@ class ImageViewer {
         this.statusText.textContent = `Retry attempt ${attempt}/${maxAttempts}... (${this.networkQuality} network)`;
         
         try {
-            await this.loadImageWithProgress(imageUrl);
+            await this.loadImageWithProgress(imageUrl, cacheKey);
         } catch (error) {
             const delay = this.calculateRetryDelay(attempt + 1);
             console.log(`Retry ${attempt} failed, waiting ${delay}ms before next attempt`);
-            setTimeout(() => this.retryImageLoad(imageUrl, attempt + 1), delay);
+            setTimeout(() => this.retryImageLoad(imageUrl, attempt + 1, cacheKey), delay);
         }
     }
     
@@ -756,7 +872,8 @@ class ImageViewer {
         
         retryButton.onclick = () => {
             retryButton.remove();
-            this.loadImageWithProgress(imageUrl);
+            const cacheKey = this.generateCacheKey(imageUrl);
+            this.loadImageWithProgress(imageUrl, cacheKey);
         };
         
         this.loadingIndicator.appendChild(retryButton);
@@ -786,8 +903,9 @@ class ImageViewer {
         if (img.src && img.src.startsWith('blob:') && img.complete && img.naturalWidth === 0) {
             console.warn('Cached blob URL is revoked, reloading image:', imageUrl);
             // Remove from cache and reload
-            this.imageCache.delete(imageUrl);
-            this.loadImageWithProgress(imageUrl);
+            const cacheKey = this.generateCacheKey(imageUrl);
+            this.imageCache.delete(cacheKey);
+            this.loadImageWithProgress(imageUrl, cacheKey);
             return;
         }
         
@@ -820,16 +938,19 @@ class ImageViewer {
             } else {
                 // Fallback: reload the image
                 console.warn('Cached image is not valid, reloading:', imageUrl);
-                this.imageCache.delete(imageUrl);
-                this.loadImageWithProgress(imageUrl);
+                const cacheKey = this.generateCacheKey(imageUrl);
+                this.imageCache.delete(cacheKey);
+                this.loadImageWithProgress(imageUrl, cacheKey);
                 return;
             }
         }
         
-        // Update status with performance info including resolution mode
+        // Update status with performance info including resolution mode and vegetation filter
         const cacheHitRate = this.cacheMetrics.hits / (this.cacheMetrics.hits + this.cacheMetrics.misses) * 100;
         const resolutionMode = this.useFullResolution ? 'Full' : '2x Downsampled';
-        this.statusText.textContent = `Loaded: ${this.currentImageType}-event image (${resolutionMode}, Cache: ${cacheHitRate.toFixed(1)}%)`;
+        // When toggle is active (true), show "Automatic Vegetation Filter", when inactive (false), show nothing
+        const filterMode = this.vegetationFilterAvailable && this.useVegetationFilter ? ', Automatic Vegetation Filter' : '';
+        this.statusText.textContent = `Loaded: ${this.currentImageType}-event image (${resolutionMode}${filterMode}, Cache: ${cacheHitRate.toFixed(1)}%)`;
         
         // Only fit to view on first load or after resolution change
         if (this.isFirstLoad || this.wasResolutionChanged) {
@@ -872,9 +993,11 @@ class ImageViewer {
         // Update network quality indicator
         this.networkQualityDot.className = `network-quality ${this.networkQuality}`;
         
-        // Update metrics text with resolution mode
+        // Update metrics text with resolution mode and vegetation filter
         const resMode = this.useFullResolution ? 'Full' : '2x';
-        this.metricsText.textContent = `Cache: ${cacheHitRate}% | Mem: ${memoryUsageMB}MB | ${this.imageCache.size}/${this.maxCacheSize} (${resMode})`;
+        const filterMode = this.vegetationFilterAvailable && this.useVegetationFilter ? ' AVF' : '';
+        const modeText = `${resMode}${filterMode}`;
+        this.metricsText.textContent = `Cache: ${cacheHitRate}% | Mem: ${memoryUsageMB}MB | ${this.imageCache.size}/${this.maxCacheSize} (${modeText})`;
         
         // Show indicator during loading or if performance is poor
         const shouldShow = this.isLoading || 
@@ -908,25 +1031,48 @@ class ImageViewer {
         this.addToPreloadQueue(this.getImageUrl(currentDataset.postEvent), 1, 'current-post');
         this.addToPreloadQueue(this.getImageUrl(currentDataset.changeDetection), 1, 'current-change');
         
-        // Priority 2: Next dataset's current image type (navigation prediction)
+        // If vegetation filter is available, also preload the alternate filter variant for current dataset
+        if (this.vegetationFilterAvailable && currentDataset.hasVegetationFilter) {
+            const alternateFilterState = !this.useVegetationFilter;
+            const originalState = this.useVegetationFilter;
+            
+            // Temporarily switch filter state to get alternate URLs
+            this.useVegetationFilter = alternateFilterState;
+            
+            // Only preload alternate variants if they actually exist
+            if (currentDataset.preEvent?.vegFilter) {
+                this.addToPreloadQueue(this.getImageUrl(currentDataset.preEvent), 2, 'current-pre-alt-filter');
+            }
+            if (currentDataset.postEvent?.vegFilter) {
+                this.addToPreloadQueue(this.getImageUrl(currentDataset.postEvent), 2, 'current-post-alt-filter');
+            }
+            if (currentDataset.changeDetection?.vegFilter) {
+                this.addToPreloadQueue(this.getImageUrl(currentDataset.changeDetection), 2, 'current-change-alt-filter');
+            }
+            
+            // Restore original state
+            this.useVegetationFilter = originalState;
+        }
+        
+        // Priority 3: Next dataset's current image type (navigation prediction)
         const nextDataset = this.datasets[nextIndex];
         const nextImageProperty = this.getImageProperty(this.currentImageType);
         const nextImageUrl = this.getImageUrl(nextDataset[nextImageProperty]);
-        this.addToPreloadQueue(nextImageUrl, 2, 'next-current');
+        this.addToPreloadQueue(nextImageUrl, 3, 'next-current');
         
-        // Priority 3: Previous dataset's current image type
+        // Priority 4: Previous dataset's current image type
         const prevDataset = this.datasets[prevIndex];
         const prevImageUrl = this.getImageUrl(prevDataset[nextImageProperty]);
-        this.addToPreloadQueue(prevImageUrl, 3, 'prev-current');
+        this.addToPreloadQueue(prevImageUrl, 4, 'prev-current');
         
-        // Priority 4: Next dataset's other image types
+        // Priority 5: Next dataset's other image types
         if (this.networkQuality === 'good') {
-            this.addToPreloadQueue(this.getImageUrl(nextDataset.preEvent), 4, 'next-pre');
-            this.addToPreloadQueue(this.getImageUrl(nextDataset.postEvent), 4, 'next-post');
-            this.addToPreloadQueue(this.getImageUrl(nextDataset.changeDetection), 4, 'next-change');
+            this.addToPreloadQueue(this.getImageUrl(nextDataset.preEvent), 5, 'next-pre');
+            this.addToPreloadQueue(this.getImageUrl(nextDataset.postEvent), 5, 'next-post');
+            this.addToPreloadQueue(this.getImageUrl(nextDataset.changeDetection), 5, 'next-change');
         }
         
-        // Priority 5: Adjacent datasets (if network is excellent)
+        // Priority 6: Adjacent datasets (if network is excellent)
         if (this.networkQuality === 'excellent' && this.datasets.length > 3) {
             const nextNextIndex = (this.currentDatasetIndex + 2) % this.datasets.length;
             const prevPrevIndex = (this.currentDatasetIndex - 2 + this.datasets.length) % this.datasets.length;
@@ -937,8 +1083,8 @@ class ImageViewer {
             const nextNextImageUrl = this.getImageUrl(nextNextDataset[nextImageProperty]);
             const prevPrevImageUrl = this.getImageUrl(prevPrevDataset[nextImageProperty]);
             
-            this.addToPreloadQueue(nextNextImageUrl, 5, 'next-next');
-            this.addToPreloadQueue(prevPrevImageUrl, 5, 'prev-prev');
+            this.addToPreloadQueue(nextNextImageUrl, 6, 'next-next');
+            this.addToPreloadQueue(prevPrevImageUrl, 6, 'prev-prev');
         }
         
         // Execute preloading with priority order
@@ -955,13 +1101,22 @@ class ImageViewer {
     }
     
     addToPreloadQueue(imageUrl, priority, context) {
-        if (!imageUrl || this.imageCache.has(imageUrl) || this.preloadQueue.has(imageUrl)) {
+        if (!imageUrl) {
+            return;
+        }
+        
+        // Generate cache key for this URL with current state
+        const cacheKey = this.generateCacheKey(imageUrl);
+        
+        // Check if already cached or in preload queue
+        if (this.imageCache.has(cacheKey) || this.preloadQueue.has(imageUrl)) {
             return;
         }
         
         this.preloadQueue.set(imageUrl, {
             priority,
             context,
+            cacheKey,
             addedAt: Date.now()
         });
     }
@@ -989,9 +1144,13 @@ class ImageViewer {
     }
     
     async preloadImageWithPriority(imageUrl) {
-        if (this.imageCache.has(imageUrl) || !this.preloadQueue.has(imageUrl)) return;
+        if (!this.preloadQueue.has(imageUrl)) return;
         
         const preloadInfo = this.preloadQueue.get(imageUrl);
+        const cacheKey = preloadInfo.cacheKey;
+        
+        // Check if already cached with this key
+        if (this.imageCache.has(cacheKey)) return;
         
         try {
             // Check memory constraints before preloading
@@ -1024,13 +1183,14 @@ class ImageViewer {
                     this.updateNetworkQuality(loadTime);
                     
                     // Add to cache with LRU metadata
-                    this.addToCache(imageUrl, img, {
+                    this.addToCache(cacheKey, img, {
                         priority: preloadInfo.priority,
                         context: preloadInfo.context,
                         loadTime,
                         lastAccessed: Date.now(),
                         accessCount: 0,
-                        blobUrl: img.dataset.blobUrl // Track blob URL for cleanup
+                        blobUrl: img.dataset.blobUrl, // Track blob URL for cleanup
+                        originalUrl: imageUrl // Store the original URL for reference
                     });
                     
                     cleanup();
@@ -1085,7 +1245,7 @@ class ImageViewer {
         return true;
     }
     
-    addToCache(imageUrl, img, metadata = {}) {
+    addToCache(cacheKey, img, metadata = {}) {
         // Perform circular buffer eviction if needed
         this.performCircularBufferEviction();
         
@@ -1105,16 +1265,16 @@ class ImageViewer {
         };
         
         // Add to cache and track order for circular buffer
-        this.imageCache.set(imageUrl, cacheEntry);
+        this.imageCache.set(cacheKey, cacheEntry);
         
         // Remove from cacheOrder if already exists (to avoid duplicates when re-accessing)
-        const existingIndex = this.cacheOrder.indexOf(imageUrl);
+        const existingIndex = this.cacheOrder.indexOf(cacheKey);
         if (existingIndex !== -1) {
             this.cacheOrder.splice(existingIndex, 1);
         }
         
         // Add to end of queue (most recent)
-        this.cacheOrder.push(imageUrl);
+        this.cacheOrder.push(cacheKey);
         
         this.updateMemoryMetrics();
     }
@@ -1122,11 +1282,11 @@ class ImageViewer {
     performCircularBufferEviction() {
         // Simple circular buffer: when cache reaches limit, remove oldest image (FIFO)
         while (this.imageCache.size >= this.maxCacheSize && this.cacheOrder.length > 0) {
-            const oldestUrl = this.cacheOrder.shift(); // Remove first (oldest) entry
-            const entry = this.imageCache.get(oldestUrl);
+            const oldestKey = this.cacheOrder.shift(); // Remove first (oldest) entry
+            const entry = this.imageCache.get(oldestKey);
             
             if (entry) {
-                console.log(`Circular buffer evicting: ${oldestUrl}`);
+                console.log(`Circular buffer evicting: ${oldestKey}`);
                 
                 // Clean up blob URLs when evicting
                 if (entry.metadata?.blobUrl) {
@@ -1136,7 +1296,7 @@ class ImageViewer {
                     URL.revokeObjectURL(entry.image.src);
                 }
                 
-                this.imageCache.delete(oldestUrl);
+                this.imageCache.delete(oldestKey);
             }
         }
     }
@@ -1218,6 +1378,8 @@ class ImageViewer {
             this.currentDatasetIndex--;
             this.datasetSelect.value = this.currentDatasetIndex;
             this.updateDatasetCounter();
+            // Check vegetation filter availability for new dataset
+            this.checkVegetationFilterAvailability();
             // No longer reset view when changing datasets - maintain zoom/pan
             this.loadCurrentImage();
             
@@ -1231,6 +1393,8 @@ class ImageViewer {
             this.currentDatasetIndex++;
             this.datasetSelect.value = this.currentDatasetIndex;
             this.updateDatasetCounter();
+            // Check vegetation filter availability for new dataset
+            this.checkVegetationFilterAvailability();
             // No longer reset view when changing datasets - maintain zoom/pan
             this.loadCurrentImage();
             
