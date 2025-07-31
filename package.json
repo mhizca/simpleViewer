@@ -5,6 +5,8 @@
   "main": "index.js",
   "scripts": {
     "start": "node server.js",
+    "build": "node build.js",
+    "start:prod": "NODE_ENV=production node server.js",
     "downsample": "node create-downsampled-images.js",
     "downsample:dry": "node create-downsampled-images.js --dry-run",
     "downsample:force": "node create-downsampled-images.js --force"
@@ -19,9 +21,5 @@
     "express": "^5.1.0",
     "express-session": "^1.18.2",
     "sharp": "^0.34.3"
-  },
-  "optionalDependencies": {
-    "puppeteer": "^22.0.0"
-  },
-  "devDependencies": {}
+  }
 }

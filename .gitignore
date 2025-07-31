@@ -1,10 +1,105 @@
+# Node.js
 node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment files
 .env
+.env.production
+.env.local
+.env.staging
+.env.test
+
+# Build artifacts
+dist/
+build/
+
+# Docker volumes and data
+data/
+logs/
+redis_data/
+app_logs/
+nginx_cache/
+
+# SSL certificates and keys
+ssl/
+certs/
+*.pem
+*.key
+*.crt
+*.p12
+
+# Monitoring data
+monitoring/data/
+prometheus_data/
+grafana_data/
+elasticsearch_data/
+
+# Terraform state and artifacts
+terraform/.terraform/
+terraform/*.tfstate
+terraform/*.tfstate.backup
+terraform/.terraform.lock.hcl
+terraform/terraform.tfvars
+
+# Cloud deployment artifacts
+.vercel
+.netlify
+.aws-sam/
+.serverless/
+
+# Backup files
+*.backup
+*.bak
+*.old
+*.tmp
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
+
+# Runtime files
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage and testing
+coverage/
+.nyc_output
+test-results/
+
+# Cache directories
+.npm
+.eslintcache
+.cache/
+
+# Optional files
+.node_repl_history
+*.tgz
+.yarn-integrity
+
+# Performance reports and analytics
+performance-*.html
+analytics-*.html
+executive-*.md
+benchmark-script.js
+
+# Data directories (keep structure, ignore content)
 analysis/
 .claude/
 co-registered_/
 coregistered-only/
-coregistered-only
-

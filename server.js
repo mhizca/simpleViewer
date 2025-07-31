@@ -241,6 +241,10 @@ app.get('/', requireAuth, (req, res) => {
 // Serve static files with authentication
 app.use('/styles.css', requireAuth, express.static('public/styles.css'));
 app.use('/app.js', requireAuth, express.static('public/app.js'));
+app.use('/performance-monitor.js', requireAuth, express.static('public/performance-monitor.js'));
+
+// Serve modules directory for ES6 imports
+app.use('/modules', requireAuth, express.static('public/modules'));
 
 // Serve panorama files
 app.get('/panorama.png', requireAuth, (req, res) => {
