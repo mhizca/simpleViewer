@@ -5,14 +5,6 @@
   "main": "index.js",
   "scripts": {
     "start": "node server.js",
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "perf-test": "node run-performance-tests.js",
-    "perf-test-server": "node comprehensive-performance-test.js",
-    "perf-test-basic": "node performance-test.js", 
-    "perf-demo": "node demo-performance-tests.js",
-    "check-images": "node check-progressive-status.js",
-    "convert-images": "node convert-to-progressive.js",
-    "convert-images:dry": "node convert-to-progressive.js --dry-run",
     "downsample": "node create-downsampled-images.js",
     "downsample:dry": "node create-downsampled-images.js --dry-run",
     "downsample:force": "node create-downsampled-images.js --force"
@@ -25,9 +17,11 @@
     "cors": "^2.8.5",
     "dotenv": "^17.2.1",
     "express": "^5.1.0",
-    "express-session": "^1.18.2"
+    "express-session": "^1.18.2",
+    "sharp": "^0.34.3"
   },
   "optionalDependencies": {
     "puppeteer": "^22.0.0"
-  }
+  },
+  "devDependencies": {}
 }
