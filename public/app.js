@@ -16,6 +16,11 @@ class ImageViewer {
         this.translateX = 0;
         this.translateY = 0;
         
+        // Panorama and box highlighting
+        this.boxMappings = []; // Will store the box center mappings from CSV
+        this.panoramaImage = { width: 1347, height: 386 }; // From CSV header
+        this.boxDimensions = { width: 190.25, height: 190.39 }; // From CSV header
+        
         // Touch tracking
         this.touches = [];
         this.lastTouchDistance = 0;
@@ -59,12 +64,22 @@ class ImageViewer {
         this.updateVegetationStatus(); // Initialize vegetation filter status display
         this.updateMaxZoom(); // Initialize zoom limits based on current resolution
         this.loadDatasets();
+        this.loadBoxMappings(); // Load the panorama box mappings
         
         // Setup performance monitoring
         this.setupPerformanceMonitoring();
         
         // Setup cleanup on page unload
         window.addEventListener('beforeunload', () => this.cleanup());
+        
+        // Update panorama highlight on window resize
+        window.addEventListener('resize', () => {
+            // Debounce the resize event
+            clearTimeout(this.resizeTimeout);
+            this.resizeTimeout = setTimeout(() => {
+                this.updatePanoramaHighlight();
+            }, 100);
+        });
     }
     
     setupPerformanceMonitoring() {
@@ -235,6 +250,145 @@ class ImageViewer {
         console.log('ImageViewer cleanup completed');
     }
     
+    async loadBoxMappings() {
+        try {
+            const response = await fetch('highlighted_box_centers.csv');
+            const csvText = await response.text();
+            this.parseBoxMappings(csvText);
+        } catch (error) {
+            console.error('Error loading box mappings:', error);
+        }
+    }
+    
+    parseBoxMappings(csvText) {
+        const lines = csvText.split('\n');
+        this.boxMappings = [];
+        
+        // Parse header information
+        this.parseCSVHeader(lines);
+        
+        // Find the JSON section in the CSV
+        let jsonStartIndex = -1;
+        for (let i = 0; i < lines.length; i++) {
+            if (lines[i].trim() === '# JSON format:') {
+                jsonStartIndex = i + 1;
+                break;
+            }
+        }
+        
+        if (jsonStartIndex !== -1) {
+            // Extract JSON data
+            let jsonText = '';
+            for (let i = jsonStartIndex; i < lines.length; i++) {
+                if (lines[i].trim()) {
+                    jsonText += lines[i] + '\n';
+                }
+            }
+            
+            try {
+                this.boxMappings = JSON.parse(jsonText);
+                console.log(`Loaded ${this.boxMappings.length} box mappings`);
+            } catch (error) {
+                console.error('Error parsing box mappings JSON:', error);
+                // Fallback to CSV parsing
+                this.parseCSVBoxMappings(lines);
+            }
+        } else {
+            // Fallback to CSV parsing
+            this.parseCSVBoxMappings(lines);
+        }
+    }
+    
+    parseCSVBoxMappings(lines) {
+        // Parse CSV format as fallback
+        this.boxMappings = [];
+        let imageNumber = 1; // Start numbering from 1
+        
+        for (let i = 8; i < lines.length; i++) { // Start after header
+            const line = lines[i].trim();
+            if (line && !line.startsWith('#') && line.includes(',')) {
+                const parts = line.split(',');
+                if (parts.length >= 5) {
+                    const mapping = {
+                        numero: imageNumber++, // Assign sequential numbers
+                        x: parseFloat(parts[1]),
+                        y: parseFloat(parts[2]),
+                        col: parseInt(parts[3]),
+                        row: parseInt(parts[4])
+                    };
+                    if (!isNaN(mapping.x) && !isNaN(mapping.y)) {
+                        this.boxMappings.push(mapping);
+                    }
+                }
+            }
+        }
+        console.log(`Parsed ${this.boxMappings.length} box mappings from CSV`);
+    }
+    
+    parseCSVHeader(lines) {
+        // Parse header information to extract dimensions dynamically
+        for (let i = 0; i < Math.min(10, lines.length); i++) {
+            const line = lines[i].trim();
+            
+            // Parse panorama image dimensions
+            if (line.startsWith('# Image:')) {
+                const match = line.match(/(\d+)x(\d+)/);
+                if (match) {
+                    this.panoramaImage.width = parseInt(match[1]);
+                    this.panoramaImage.height = parseInt(match[2]);
+                    console.log(`Panorama dimensions: ${this.panoramaImage.width}x${this.panoramaImage.height}`);
+                }
+            }
+            
+            // Parse box dimensions
+            if (line.startsWith('# Box dimensions:')) {
+                const match = line.match(/([\d.]+)x([\d.]+)/);
+                if (match) {
+                    this.boxDimensions.width = parseFloat(match[1]);
+                    this.boxDimensions.height = parseFloat(match[2]);
+                    console.log(`Box dimensions: ${this.boxDimensions.width}x${this.boxDimensions.height}`);
+                }
+            }
+        }
+    }
+    
+    updatePanoramaHighlight() {
+        if (!this.datasets.length || !this.boxMappings.length) return;
+        
+        const currentDataset = this.datasets[this.currentDatasetIndex];
+        const imageNumber = parseInt(currentDataset.id);
+        
+        // Find the mapping for current image number
+        const mapping = this.boxMappings.find(m => m.numero === imageNumber);
+        
+        if (mapping) {
+            // Calculate the highlight box position and size
+            // The panorama overlay is 300x86px (or 200x57px on mobile), scaling the 1347x386px panorama
+            const panoramaRect = this.panoramaImageElement.getBoundingClientRect();
+            const scaleX = panoramaRect.width / this.panoramaImage.width;
+            const scaleY = panoramaRect.height / this.panoramaImage.height;
+            
+            // Calculate box position (center the box around the coordinates)
+            const boxLeft = (mapping.x - this.boxDimensions.width / 2) * scaleX;
+            const boxTop = (mapping.y - this.boxDimensions.height / 2) * scaleY;
+            const boxWidth = this.boxDimensions.width * scaleX;
+            const boxHeight = this.boxDimensions.height * scaleY;
+            
+            // Update highlight box
+            this.highlightBox.style.left = `${boxLeft}px`;
+            this.highlightBox.style.top = `${boxTop}px`;
+            this.highlightBox.style.width = `${boxWidth}px`;
+            this.highlightBox.style.height = `${boxHeight}px`;
+            this.highlightBox.style.display = 'block';
+            
+            console.log(`Highlighting box for image ${imageNumber} at (${mapping.x}, ${mapping.y})`);
+        } else {
+            // Hide highlight box if no mapping found
+            this.highlightBox.style.display = 'none';
+            console.log(`No mapping found for image ${imageNumber}`);
+        }
+    }
+    
     setupElements() {
         this.viewer = document.getElementById('imageViewer');
         this.image = document.getElementById('mainImage');
@@ -254,6 +408,11 @@ class ImageViewer {
         this.vegetationToggle = document.getElementById('vegetationToggle');
         this.vegetationStatus = document.getElementById('vegetationStatus');
         this.vegetationControls = document.querySelector('.vegetation-controls');
+        
+        // Panorama elements
+        this.panoramaOverlay = document.getElementById('panoramaOverlay');
+        this.panoramaImageElement = document.getElementById('panoramaImage');
+        this.highlightBox = document.getElementById('highlightBox');
         
         // Add error handling to main image element
         this.image.addEventListener('error', (e) => {
@@ -961,6 +1120,9 @@ class ImageViewer {
             this.isFirstLoad = false;
             this.wasResolutionChanged = false;
         }
+        
+        // Update panorama highlight
+        this.updatePanoramaHighlight();
     }
     
     updatePerformanceMetrics() {

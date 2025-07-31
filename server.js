@@ -242,6 +242,15 @@ app.get('/', requireAuth, (req, res) => {
 app.use('/styles.css', requireAuth, express.static('public/styles.css'));
 app.use('/app.js', requireAuth, express.static('public/app.js'));
 
+// Serve panorama files
+app.get('/panorama.png', requireAuth, (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'panorama.png'));
+});
+
+app.get('/highlighted_box_centers.csv', requireAuth, (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'highlighted_box_centers.csv'));
+});
+
 app.get('/api/datasets/:project', requireAuth, (req, res) => {
   const { project } = req.params;
   
