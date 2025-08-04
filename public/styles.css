@@ -536,8 +536,8 @@ body {
 /* Panorama Overlay Styles */
 .panorama-overlay {
     position: absolute;
-    bottom: 20px;
-    right: 20px;
+    top: 20px;
+    left: 20px;
     width: 300px;
     height: 86px;
     background-color: rgba(0, 0, 0, 0.8);
@@ -599,8 +599,8 @@ body {
     .panorama-overlay {
         width: 200px;
         height: 57px;
-        bottom: 10px;
-        right: 10px;
+        top: 10px;
+        left: 10px;
     }
 }
 
