@@ -63,6 +63,7 @@
                     <div class="colorbar"></div>
                     <span class="colorbar-label">Max change</span>
                 </div>
+                <button id="colorbarHelp" class="colorbar-help-btn" title="Change detection information">?</button>
             </div>
         </div>
         
@@ -100,6 +101,33 @@
                 <span class="metrics-text">Cache: 0% | Mem: 0MB</span>
             </div>
             <span id="zoomLevel">100%</span>
+        </div>
+    </div>
+    
+    <!-- Change Detection Help Modal -->
+    <div id="changeDetectionModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Change Detection Analysis</h3>
+                <span class="modal-close">&times;</span>
+            </div>
+            <div class="modal-body">
+                <p><strong>What you're viewing:</strong></p>
+                <p>The change detection map displays <strong>structural changes</strong> between the pre-event and post-event images. The colors indicate the intensity of change detected at each pixel and its surrounding area.</p>
+                
+                <div class="change-explanation">
+                    <div class="color-example green"></div>
+                    <p><strong>Green (No change):</strong> Areas that remained structurally identical between the two time periods.</p>
+                </div>
+                
+                <div class="change-explanation">
+                    <div class="color-example red"></div>
+                    <div class="color-example blue"></div>
+                    <p><strong>Red-Blue (High change):</strong> Areas with significant structural modifications.</p>
+                </div>
+                
+                <p><strong>Note:</strong> This analysis focuses on structural changes rather than color or lighting variations. The color intensity indicates the strength of structural change and is not related to the size or area of the change.</p>
+            </div>
         </div>
     </div>
     

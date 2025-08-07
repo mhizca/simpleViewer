@@ -640,6 +640,133 @@ body {
     white-space: nowrap;
 }
 
+.colorbar-help-btn {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background-color: #0066cc;
+    color: white;
+    border: none;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-left: 8px;
+    transition: background-color 0.2s;
+}
+
+.colorbar-help-btn:hover {
+    background-color: #0052a3;
+}
+
+/* Modal Styles */
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(3px);
+}
+
+.modal-content {
+    background-color: #2a2a2a;
+    margin: 5% auto;
+    padding: 0;
+    border: 1px solid #444;
+    border-radius: 8px;
+    width: 90%;
+    max-width: 600px;
+    max-height: 80vh;
+    overflow-y: auto;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px;
+    border-bottom: 1px solid #444;
+    background-color: #333;
+    border-radius: 8px 8px 0 0;
+}
+
+.modal-header h3 {
+    margin: 0;
+    color: #fff;
+    font-size: 18px;
+}
+
+.modal-close {
+    color: #aaa;
+    float: right;
+    font-size: 28px;
+    font-weight: bold;
+    cursor: pointer;
+    line-height: 1;
+}
+
+.modal-close:hover,
+.modal-close:focus {
+    color: #fff;
+}
+
+.modal-body {
+    padding: 20px;
+    line-height: 1.6;
+    color: #ddd;
+}
+
+.modal-body p {
+    margin-bottom: 15px;
+}
+
+.modal-body ul {
+    margin: 10px 0;
+    padding-left: 20px;
+}
+
+.modal-body li {
+    margin-bottom: 5px;
+}
+
+.change-explanation {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    margin: 15px 0;
+    padding: 10px;
+    background-color: rgba(255, 255, 255, 0.05);
+    border-radius: 6px;
+}
+
+.color-example {
+    width: 20px;
+    height: 20px;
+    border-radius: 4px;
+    border: 1px solid #555;
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+
+.color-example.green {
+    background-color: #00ff00;
+}
+
+.color-example.red {
+    background-color: #ff0000;
+}
+
+.color-example.blue {
+    background-color: #0000ff;
+}
+
 /* Mobile responsive panorama */
 @media (max-width: 768px) {
     .panorama-overlay {
@@ -661,6 +788,30 @@ body {
     .colorbar-labels {
         font-size: 10px;
         gap: 5px;
+    }
+    
+    .colorbar-help-btn {
+        width: 20px;
+        height: 20px;
+        font-size: 12px;
+        margin-left: 6px;
+    }
+    
+    .modal-content {
+        width: 95%;
+        margin: 10% auto;
+    }
+    
+    .modal-header {
+        padding: 15px;
+    }
+    
+    .modal-header h3 {
+        font-size: 16px;
+    }
+    
+    .modal-body {
+        padding: 15px;
     }
 }
 

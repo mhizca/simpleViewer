@@ -34,7 +34,9 @@ export class UIManager {
             resolutionStatus: document.getElementById('resolutionStatus'),
             vegetationToggle: document.getElementById('vegetationToggle'),
             vegetationStatus: document.getElementById('vegetationStatus'),
-            vegetationControls: document.querySelector('.vegetation-controls')
+            vegetationControls: document.querySelector('.vegetation-controls'),
+            colorbarHelp: document.getElementById('colorbarHelp'),
+            changeDetectionModal: document.getElementById('changeDetectionModal')
         };
 
         // Add error handling to main image element
@@ -134,6 +136,31 @@ export class UIManager {
         document.addEventListener('keydown', (e) => {
             if (this.callbacks.onKeyDown) {
                 this.callbacks.onKeyDown(e);
+            }
+        });
+
+        // Colorbar help button
+        this.elements.colorbarHelp?.addEventListener('click', () => {
+            this.showChangeDetectionModal();
+        });
+
+        // Modal close functionality
+        const modalClose = document.querySelector('.modal-close');
+        modalClose?.addEventListener('click', () => {
+            this.hideChangeDetectionModal();
+        });
+
+        // Close modal when clicking outside
+        this.elements.changeDetectionModal?.addEventListener('click', (e) => {
+            if (e.target === this.elements.changeDetectionModal) {
+                this.hideChangeDetectionModal();
+            }
+        });
+
+        // Close modal with Escape key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && this.elements.changeDetectionModal?.style.display === 'block') {
+                this.hideChangeDetectionModal();
             }
         });
     }
@@ -456,5 +483,23 @@ export class UIManager {
         this.setImageNameText('');
         
         console.log('UIManager cleanup completed');
+    }
+
+    /**
+     * Show change detection modal
+     */
+    showChangeDetectionModal() {
+        if (this.elements.changeDetectionModal) {
+            this.elements.changeDetectionModal.style.display = 'block';
+        }
+    }
+
+    /**
+     * Hide change detection modal
+     */
+    hideChangeDetectionModal() {
+        if (this.elements.changeDetectionModal) {
+            this.elements.changeDetectionModal.style.display = 'none';
+        }
     }
 }
