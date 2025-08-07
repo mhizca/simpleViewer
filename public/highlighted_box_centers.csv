@@ -4,7 +4,7 @@
 # Overlap: X=80%, Y=85%
 # Box dimensions: 280.63x188.29 px
 # Box aspect ratio: 1.49
-# Total highlighted boxes: 56
+# Total highlighted boxes: 55
 
 Number,X,Y,Column,Row
 undefined,140.31,291.85,1,1
@@ -310,13 +310,6 @@ undefined,1206.69,291.85,20,8
     "y": 207.12,
     "col": 13,
     "row": 4
-  },
-  {
-    "numero": 104,
-    "x": 813.81,
-    "y": 94.15,
-    "col": 13,
-    "row": 8
   },
   {
     "numero": 107,
