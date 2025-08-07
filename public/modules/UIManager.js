@@ -145,6 +145,12 @@ export class UIManager {
         document.querySelectorAll('.image-type-btn').forEach(btn => {
             btn.classList.toggle('active', btn.dataset.type === type);
         });
+        
+        // Show/hide colorbar based on image type
+        const colorbarContainer = document.querySelector('.colorbar-container');
+        if (colorbarContainer) {
+            colorbarContainer.classList.toggle('show', type === 'change');
+        }
     }
 
     /**

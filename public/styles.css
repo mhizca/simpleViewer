@@ -79,9 +79,11 @@ body {
 .image-type-controls {
     display: flex;
     justify-content: center;
+    align-items: center;
     gap: 10px;
     padding: 10px;
     background-color: #222;
+    position: relative;
 }
 
 .image-type-btn {
@@ -594,6 +596,50 @@ body {
     }
 }
 
+/* Colorbar Styles */
+.colorbar-container {
+    display: none; /* Hidden by default */
+    align-items: center;
+    gap: 10px;
+    transition: opacity 0.3s ease;
+    position: absolute;
+    right: 20px;
+}
+
+.colorbar-container.show {
+    display: flex; /* Show when change detection is active */
+}
+
+.colorbar {
+    width: 200px;
+    height: 25px;
+    background: linear-gradient(to right,
+        #00ff00 0%,     /* Green */
+        #80ff00 16.67%, /* Green-yellow */
+        #ffff00 33.33%, /* Yellow */
+        #ff8000 50%,    /* Orange */
+        #ff0000 66.67%, /* Red */
+        #8000ff 83.33%, /* Purple */
+        #0000ff 100%    /* Blue */
+    );
+    border: 1px solid #555;
+    border-radius: 4px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.colorbar-labels {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: #bbb;
+}
+
+.colorbar-label {
+    white-space: nowrap;
+}
+
 /* Mobile responsive panorama */
 @media (max-width: 768px) {
     .panorama-overlay {
@@ -601,6 +647,20 @@ body {
         height: 57px;
         top: 10px;
         left: 10px;
+    }
+    
+    .colorbar-container {
+        right: 10px;
+    }
+    
+    .colorbar {
+        width: 150px;
+        height: 20px;
+    }
+    
+    .colorbar-labels {
+        font-size: 10px;
+        gap: 5px;
     }
 }
 
